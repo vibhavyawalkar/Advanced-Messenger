@@ -20,8 +20,9 @@
  *
  * This contains the main function. Add further description here....
  */
+
 /* set expandtab ts=4 sw=4 ai */
-/* Reference http://man7.org/linux/man-pages/man3/getnameinfo.3.html */
+
 #include <iostream>
 #include <stdio.h>
 #include <string.h>
@@ -34,9 +35,11 @@
 #include <sys/types.h>
 #include <netdb.h>
 #include <stdlib.h>
+#include <unistd.h>
+
 #include "../include/global.h"
 #include "../include/logger.h"
-#include<unistd.h>
+
 #define BACKLOG 5
 #define STDIN 0
 #define TRUE 1
@@ -47,6 +50,7 @@ using namespace std;
 int connect_to_host(string &server_ip, string &server_port);
 void run_server(string server_port);
 void run_client(string port);
+void print_ip(string cmd);
 
 class loggedClient
 {
@@ -82,7 +86,7 @@ int main(int argc, char **argv)
 	/*Start Here*/
     if(argc == 3 && strcmp(argv[1], "s") == 0) { // Run as server
         run_server(argv[2]);
-    } else if(argc == 2 && strcmp(argv[1], "c") == 0) { // Run as client
+    } else if(argc == 3 && strcmp(argv[1], "c") == 0) { // Run as client
         run_client(argv[2]);
     } else {
         cse4589_print_and_log("[%s:ERROR]\n");
@@ -112,7 +116,7 @@ int connect_to_host(string &server_ip, string &server_port)
     if(connect(fdsocket, res->ai_addr, res->ai_addrlen) < 0)
         perror("Connect failed");
 
-    cse4589_print_and_log("Connected to server %s:%s", server_ip.c_str(), server_port.c_str());
+    cout << "Connected to server " << server_ip.c_str() << ":" << server_port.c_str();
     freeaddrinfo(res);
     return fdsocket;
 }
@@ -137,19 +141,19 @@ void run_server(string server_port) {
     /* Socket */
     int server_socket = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if(server_socket < 0)
-	perror("Cannot create socket");
+	    perror("Cannot create socket");
 
     /* Bind */
     if(bind(server_socket, res->ai_addr, res->ai_addrlen) < 0)
-	perror("Bind failed");
+	    perror("Bind failed");
 
     freeaddrinfo(res);
 
     /* Listen */
     if(listen(server_socket, BACKLOG) < 0)
-	perror("Unable to listen on port");
+	    perror("Unable to listen on port");
 
-    cse4589_print_and_log("Server listening on port: %s\n", server_port.c_str());
+    cout << "Server listening on port: " << server_port.c_str() << endl;
     /* Zero select FD sets */
     FD_ZERO(&master_list);
     FD_ZERO(&watch_list);
@@ -169,7 +173,7 @@ void run_server(string server_port) {
 	    if(selret < 0)
 	        perror("select failed.");
 
-        cse4589_print_and_log("Select returned\n");
+        cout << "Select returned" << endl;
 	    /* Check if we have sockets/STDIN to process */
 	    if(selret > 0) {
 	        /* Looping through socket descriptors to check which ones are ready */
@@ -191,25 +195,27 @@ void run_server(string server_port) {
 
                         if(strcmp(tokens[0].c_str(), "AUTHOR") == 0)
                         {
-                            cse4589_print_and_log("[%s:SUCCESS]\n", cmd_input.c_str());
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cse4589_print_and_log("I, %s, have read and understood the course academic integrity policy.\n", "vibhavvi");
                         } else if(strcmp(tokens[0].c_str(), "IP") == 0) {
-                            cse4589_print_and_log("[%s:SUCCESS]\n", cmd_input.c_str());
-                            cse4589_print_and_log("IP:%s\n", "ip_addr");
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+                            print_ip(tokens[0]);
                         } else if(strcmp(tokens[0].c_str(), "PORT") == 0) {
-                            cse4589_print_and_log("[%s:SUCCESS]\n", cmd_input.c_str());
-                            cse4589_print_and_log("PORT:%d\n", 7855);
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+                            cse4589_print_and_log("PORT:%d\n", server_port.c_str());
                         } else if(strcmp(tokens[0].c_str(), "LIST") == 0) {
-                            cse4589_print_and_log("[%s:SUCCESS]\n", cmd_input.c_str());
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cse4589_print_and_log("host list\n");
                         } /* Server only commands */
                           else if(strcmp(tokens[0].c_str(), "STATISTICS") == 0) {
-                            cse4589_print_and_log("[%s:SUCCESS]\n", cmd_input.c_str());
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cse4589_print_and_log("Statistics\n");
                         } else if(strcmp(tokens[0].c_str(), "BLOCKED") == 0) {
-                            cse4589_print_and_log("[%s:SUCCESS]\n", cmd_input.c_str());
-                        } else {/*NOT USED */}
-                        cse4589_print_and_log("[%s:END]\n", cmd_input.c_str());
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+                        } else {
+                            cse4589_print_and_log("[%s:ERROR]\n", tokens[0].c_str());
+                        }
+                        cse4589_print_and_log("[%s:END]\n", tokens[0].c_str());
                         cmd_input.clear();
                         line.clear();
                     }
@@ -220,7 +226,7 @@ void run_server(string server_port) {
                         if(fdaccept < 0)
                             perror("Accept failed.");
                         /* Add to watched socket list */
-                        cse4589_print_and_log("Connection accepted from host");
+                        cout << "Connection accepted from host" << endl;
                         struct sockaddr_storage addr;
                         struct sockaddr sa;
                         socklen_t len;
@@ -237,7 +243,8 @@ void run_server(string server_port) {
                         string hostname(host);
                         loggedClient c(hostname, ipstr , ntohs(s->sin_port));
                         
-                        cse4589_print_and_log("Connection accepted from host %s %s %d", hostname.c_str(), ipstr.c_str(), ntohs(s->sin_port));
+                        cout << "Connection accepted from host %s %s %d" << hostname.c_str() << " "
+                            << ipstr.c_str() << " " <<  ntohs(s->sin_port);
                         FD_SET(fdaccept, &master_list);
                         if(fdaccept > head_socket) head_socket = fdaccept;
                     }
@@ -255,10 +262,10 @@ void run_server(string server_port) {
 				FD_CLR(sock_index, &master_list);
 			} else {
 	
-				printf("CLient sent: %s \n", buffer);
-				printf("Echoing it back to the remote host...");
+				cout << "Client sent: " << buffer << endl ;
+				cout << "Echoing it back to the remote host..." << endl;
 				if(send(fdaccept, buffer, strlen(buffer), 0) == strlen(buffer))
-				printf("DOne!\n");
+				cout << "Done!" << endl;
 				fflush(stdout);
 			}
 			free(buffer);
@@ -289,46 +296,82 @@ void run_client(string port)
         }
 
         if(strcmp(tokens[0].c_str(), "AUTHOR") == 0) {
-            cse4589_print_and_log("[%s:SUCCESS]\n", cmd_input.c_str());
+            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
             cse4589_print_and_log("I, %s, have read and understood the course academic integrity policy.\n", "vibhavvi");
         } else if(strcmp(tokens[0].c_str(), "IP") == 0) {
-            cse4589_print_and_log("[%s:SUCCESS]\n", cmd_input.c_str());
-            cse4589_print_and_log("IP:%s\n", "ip_addr");
+            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+            print_ip(tokens[0]);
         } else if(strcmp(tokens[0].c_str(), "PORT") == 0) {
-            cse4589_print_and_log("[%s:SUCCESS]\n", cmd_input.c_str());
-            cse4589_print_and_log("PORT:%d\n", "7855");
+            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+            cse4589_print_and_log("PORT:%d\n", port.c_str());
         } else if(strcmp(tokens[0].c_str(), "LIST") == 0) {
-            cse4589_print_and_log("[%s:SUCCESS]\n", cmd_input.c_str());
+            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
             cse4589_print_and_log("host list\n");
         } /* Client only commands start here */
           else if(strcmp(tokens[0].c_str(), "LOGIN") == 0) {
-            cse4589_print_and_log("[%s:SUCCESS]\n", cmd_input.c_str());
+            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
             cout << "Connect to Server " << tokens[1] << ":" << tokens[2];
             int server_fd = connect_to_host(tokens[1], tokens[2]);
         } else if(strcmp(tokens[0].c_str(), "REFRESH") == 0) {
-                cse4589_print_and_log("[%s:SUCCESS]\n", cmd_input.c_str());
+                cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
 
         } else if(strcmp(tokens[0].c_str(), "SEND") == 0) {
-                cse4589_print_and_log("[%s:SUCCESS]\n", cmd_input.c_str());
+                cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                 cout << "Send message to client " << tokens[1] << ":" << tokens[2];
         } else if(strcmp(tokens[0].c_str(), "BROADCAST") == 0) {
-                cse4589_print_and_log("[%s:SUCCESS]\n", cmd_input.c_str());
+                cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                 cout << "Message " << tokens[1];
         } else if(strcmp(tokens[0].c_str(), "BLOCK") == 0) {
-                cse4589_print_and_log("[%s:SUCCESS]\n", cmd_input.c_str());
+                cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                 cout << "Client IP " << tokens[1];
         } else if(strcmp(tokens[0].c_str(), "UNBLOCK") == 0) {
-                cse4589_print_and_log("[%s:SUCCESS]\n", cmd_input.c_str());
+                cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                 cout << "Unblock IP " << tokens[1];
         } else if(strcmp(tokens[0].c_str(), "LOGOUT") == 0) {
-                cse4589_print_and_log("[%s:SUCCESS]\n", cmd_input.c_str());
+                cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
         } else if(strcmp(tokens[0].c_str(), "EXIT") == 0) {
-                cse4589_print_and_log("[%s:SUCCESS]\n", cmd_input.c_str());
+                cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
         } else {
-                cse4589_print_and_log("[%s:ERROR]\n", cmd_input.c_str());
+                cse4589_print_and_log("[%s:ERROR]\n", tokens[0].c_str());
         }
-        cse4589_print_and_log("[%s:END]\n", cmd_input.c_str());
+        cse4589_print_and_log("[%s:END]\n", tokens[0].c_str());
         cmd_input.clear();
         line.clear();
     }
 } /* end of run client function */
+
+void print_ip(string cmd)
+{
+    int socketfd;
+    struct sockaddr_in server, addr;
+
+    memset(&addr, 0, sizeof(addr));
+
+    socketfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if(socketfd == -1) {
+        perror("Couldn't create socket");
+        return;
+    }
+
+    server.sin_addr.s_addr = inet_addr("8.8.8.8");
+    server.sin_family = AF_INET;
+    server.sin_port = htons(53);
+
+    if(-1 == connect(socketfd, (struct sockaddr*)&server, sizeof(server)) < 0)
+    {
+        close(socketfd);
+        perror("Connect error");
+        return;
+    }
+
+    socklen_t addr_len = sizeof(addr);
+    if(-1 == getsockname(socketfd, (struct sockaddr*)&addr, &addr_len)) {
+        perror("getsockname failed");
+        return;
+    }
+
+    char ip[INET_ADDRSTRLEN] = {'\0'};
+
+    inet_ntop(AF_INET, &addr.sin_addr, ip, INET_ADDRSTRLEN);
+    cse4589_print_and_log("IP:%s\n", ip);
+}
