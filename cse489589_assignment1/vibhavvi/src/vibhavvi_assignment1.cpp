@@ -356,7 +356,7 @@ void run_server(string server_port) {
 
 bool compare_port(clientDetails a, clientDetails b)
 {
-    return a.getClientPort() < b.getClientPort();
+    return stoi(a.getClientPort()) < stoi(b.getClientPort());
 }
 
 void print_loggedIn_Client_List()
@@ -365,7 +365,7 @@ void print_loggedIn_Client_List()
     for(int i = 0; i < loggedInClients.size(); i++)
     {
         if(strcmp("loggedin", loggedString[loggedInClients[i].loggedIn()]) == 0) {
-           cse4589_print_and_log("%-5d%-35s%-20s%-8s\n", i, loggedInClients[i].getClientName().c_str(), loggedInClients[i].getClientIp().c_str(), loggedInClients[i].getClientPort().c_str());  
+           cse4589_print_and_log("%-5d%-35s%-20s%-8s\n", i+1, loggedInClients[i].getClientName().c_str(), loggedInClients[i].getClientIp().c_str(), loggedInClients[i].getClientPort().c_str());  
         }
     }
 }
@@ -386,7 +386,7 @@ void print_server_statistics()
 {
     sort(loggedInClients.begin(), loggedInClients.end(), compare_port);
     for(int i = 0; i < loggedInClients.size(); i++) 
-        cse4589_print_and_log("%-5d%-35s%-8d%-8d%-8s\n", i, loggedInClients[i].getClientName().c_str(), loggedInClients[i].numMsgSent(), loggedInClients[i].numMsgRecv(), loggedString[loggedInClients[i].loggedIn()]);
+        cse4589_print_and_log("%-5d%-35s%-8d%-8d%-8s\n", i+1, loggedInClients[i].getClientName().c_str(), loggedInClients[i].numMsgSent(), loggedInClients[i].numMsgRecv(), loggedString[loggedInClients[i].loggedIn()]);
 
 }
 
