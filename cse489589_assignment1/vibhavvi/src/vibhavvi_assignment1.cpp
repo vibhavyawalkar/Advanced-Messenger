@@ -217,12 +217,14 @@ void run_server(string server_port) {
     while(TRUE) {
         memcpy(&watch_list, &master_list, sizeof(master_list));
 
+        cout << "Select blocking for activity..." << endl;
 	    /* select() system call. This will block */
 	    int selret = select(head_socket + 1, &watch_list, NULL, NULL, NULL);
 	    if(selret < 0)
 	        perror("select failed.");
         
         cout << "Select returned" << endl;
+        fflush(stdout);
 	    /* Check if we have sockets/STDIN to process */
 	    if(selret > 0) {
 	        /* Looping through socket descriptors to check which ones are ready */
@@ -299,7 +301,7 @@ void run_server(string server_port) {
                     /* Read from existing clients who have connected */
                     else {
                     /* Initialize buffer to receive response */
-			            char * buffer = (char*) malloc(sizeof(char)*1024);
+			            char buffer[1024];
 			            memset(buffer, '\0', 1024);
 			            if(recv(sock_index, buffer, BUFFER_SIZE, 0) <= 0)
 			            {
@@ -310,8 +312,10 @@ void run_server(string server_port) {
 				            FD_CLR(sock_index, &master_list);
 			            } else {
 	
-				            cout << "Client sent: " << buffer << endl ;
+				            cout << "Client sent: " << buffer << endl;
+                            fflush(stdout);
 				            cout << "Echoing it back to the remote host..." << endl;
+                            fflush(stdout);
                             string buf(buffer), str;
                             str = "";
                             stringstream s(buf);
@@ -319,7 +323,9 @@ void run_server(string server_port) {
                             while(getline(s, str, ' ')) {
                                 tokens.push_back(str);
                             }
-                            
+                            s.clear();
+                            buf.clear();
+                            str.clear();
                             if(strcmp(tokens[0].c_str(), "LOGIN") == 0)
                             {
                                 struct sockaddr_in addr;
@@ -332,9 +338,6 @@ void run_server(string server_port) {
                                 string ipstr =  std::string(ip);
 
                                 insertClientPort(ipstr, tokens[1]);
-				                if(send(fdaccept, buffer, strlen(buffer), 0) == strlen(buffer))
-                                    cout << "Done !" << endl;
-                            } else if(strcmp(tokens[0].c_str(), "LIST") == 0) {
                                 for(int i = 0; i < loggedInClients.size(); i++)
                                 {
                                     sprintf(buffer, "%-5d%-35s%-20s%-8s\n", i+1, loggedInClients[i].getClientName().c_str(), loggedInClients[i].getClientIp().c_str(), loggedInClients[i].getClientPort().c_str());
@@ -342,11 +345,18 @@ void run_server(string server_port) {
                                         perror("Failed to sent record to client");
                                         return;
                                     }
+                                    fflush(stdout);
                                 }
+                                if(-1 == send(fdaccept, "$", 1, 0)) {
+                                    perror("Failed to send $ termination symbol");
+                                    return;
+                                }
+                                fflush(stdout);
+
+                            } else if(strcmp(tokens[0].c_str(), "SEND") == 0) {
                             } else { }
 				            fflush(stdout);
 			            }
-			            free(buffer);
                     }
                     //cin.clear();
                     //fflush(stdin);
@@ -397,7 +407,7 @@ void print_server_statistics()
 void run_client(string port)
 {
     while(1) {
-
+        fflush(stdout);
         string cmd_input = "";
         vector<string> tokens;
 
@@ -419,29 +429,6 @@ void run_client(string port)
             cse4589_print_and_log("PORT:%s\n", port.c_str());
         } else if(strcmp(tokens[0].c_str(), "LIST") == 0) {
             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
-            if(send(connectedFd, tokens[0].c_str(), sizeof(tokens[0].c_str()), 0) <= 0) {
-                perror("failed to send the list command to the server");
-                return;
-            }
-
-            cout << "Sent list command " << endl;
-            char buffer[1024];
-            memset(&buffer, 0, sizeof(buffer));
-            char c;
-            while(c = recv(connectedFd, buffer, sizeof(buffer), 0 )) {
-                if(c == 0) {
-                    cout << "Done with receiving" << endl;
-                    break;
-                } else if(c == -1) {
-                    perror("Error in receiving");
-                    break;
-                } else {
-                     string str(buffer);
-                     cout << "Received from client.. " << endl << str.c_str();
-                    _list.push_back(str);
-                }
-            }
-            cout << "Done, receiving , now start printing";
             for(int i = 0; i < _list.size(); i++)
             {
                 cse4589_print_and_log("%s", _list[i].c_str());
@@ -455,14 +442,52 @@ void run_client(string port)
 
             ostringstream s;
             s << "LOGIN " << port;
-            string buffer(s.str());
-            if(send(connectedFd, buffer.c_str(), buffer.size(), 0) <= 0) {
+            string buf(s.str());
+            s.clear();
+            if(send(connectedFd, buf.c_str(), buf.size(), 0) <= 0) {
                 perror("failed to send the port number to the server");
                 return;
             }
-
             s.clear();
-            buffer.clear();
+            buf.clear();
+            fflush(stdout);
+            
+            char buffer[1024];
+            memset(&buffer, 0, sizeof(buffer));
+            char c;
+            while(1) {
+                c = recv(connectedFd, buffer, sizeof(buffer), 0);
+                if(c == 0) {
+                    cout << "Done with receiving" << endl;
+                    break;
+                } else if(c == -1) {
+                    perror("Error in receiving");
+                    break;
+                } else {
+                     string str(buffer);
+                     cout << "Received from server.. " << endl << str << "Size" << str.length() << endl;
+                     //fflush(stdout);
+                     if(str != "$")
+                     {
+                        cout << " COming out of loop" << endl;
+                        break;
+                     }
+                    _list.push_back(str);
+                }
+                //fflush(stdout);
+                str.clear();
+                //memset(&buffer, 0, sizeof(buffer));
+            }
+            str.clear();
+            fflush(stdout);
+            cout << "Done, receiving , now start printing" << endl;
+            fflush(stdout);
+            for(int i = 0; i < _list.size(); i++)
+            {
+                cse4589_print_and_log("%s", _list[i].c_str());
+            }
+
+
         } else if(strcmp(tokens[0].c_str(), "REFRESH") == 0) {
                 cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
 
