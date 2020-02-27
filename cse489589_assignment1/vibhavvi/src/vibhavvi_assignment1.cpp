@@ -46,16 +46,22 @@
 #define TRUE 1
 #define BUFFER_SIZE 256
 
+// Global connected FD for client
+int connectedFd;
 using namespace std;
 
 char loggedString[2][20] = {"loggedout", "loggedin"};
 
-int connect_to_host(string &server_ip, string &server_port);
+int connect_to_server(string &server_ip, string &server_port);
 void run_server(string server_port);
 void run_client(string port);
 void print_ip(string cmd);
 void print_server_statistics();
+void print_loggedIn_Client_List();
+void insertClientPort(string ip, string port);
 
+/* clientDetails contains the details about the clients to be maintained at
+   the server */
 class clientDetails
 {
     string client_name;
@@ -67,13 +73,18 @@ class clientDetails
 
     public:
 
-    clientDetails(string name, string ip, string port, int login) {
+    clientDetails(string name, string ip, int login) {
         client_name = name;
         this->ip = ip;
-        this->port = port;
+        this->port = "";
         loggedInFlag = login;
         num_msg_sent = 0;
         num_msg_recv = 0;
+    }
+
+    void setClientPort(string port)
+    {
+        this->port = port;     
     }
 
     string getClientName() {
@@ -101,7 +112,15 @@ class clientDetails
     }
 };
 
-vector<clientDetails> loggedInClients;
+vector<clientDetails> loggedInClients; // for server
+
+class listClients
+{
+    
+};
+
+
+
 
 /**
  * main function
@@ -129,7 +148,7 @@ int main(int argc, char **argv)
     return 0;
 }
 
-int connect_to_host(string &server_ip, string &server_port)
+int connect_to_server(string &server_ip, string &server_port)
 {
     struct addrinfo hints, *res;
 
@@ -151,7 +170,7 @@ int connect_to_host(string &server_ip, string &server_port)
     if(connect(fdsocket, res->ai_addr, res->ai_addrlen) < 0)
         perror("Connect failed");
 
-    cout << "Connected to server " << server_ip.c_str() << ":" << server_port.c_str();
+    cout << "Connected to server " << server_ip.c_str() << ":" << server_port.c_str() << endl;
     freeaddrinfo(res);
     return fdsocket;
 }
@@ -207,14 +226,13 @@ void run_server(string server_port) {
 	    int selret = select(head_socket + 1, &watch_list, NULL, NULL, NULL);
 	    if(selret < 0)
 	        perror("select failed.");
-
+        
         cout << "Select returned" << endl;
 	    /* Check if we have sockets/STDIN to process */
 	    if(selret > 0) {
 	        /* Looping through socket descriptors to check which ones are ready */
 	        for(sock_index = 0; sock_index <= head_socket; sock_index +=1) {
                 if(FD_ISSET(sock_index, &watch_list)) {
-                
                     /* Check if new command on STDIN */
                     if(sock_index == STDIN) {
                         string cmd_input = "";
@@ -240,11 +258,11 @@ void run_server(string server_port) {
                             cse4589_print_and_log("PORT:%s\n", server_port.c_str());
                         } else if(strcmp(tokens[0].c_str(), "LIST") == 0) {
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
-                            cse4589_print_and_log("host list\n");
+                            print_loggedIn_Client_List(); 
                         } /* Server only commands */
                           else if(strcmp(tokens[0].c_str(), "STATISTICS") == 0) {
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
-                            cse4589_print_and_log("Statistics\n");
+                            print_server_statistics();
                         } else if(strcmp(tokens[0].c_str(), "BLOCKED") == 0) {
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                         } else {
@@ -262,44 +280,32 @@ void run_server(string server_port) {
                             perror("Accept failed.");
                         /* Add to watched socket list */
 
-                        struct sockaddr_in addr;
-                  
+                        struct sockaddr_in addr; 
                         socklen_t addr_len;
                         addr_len = sizeof(addr);
                         getpeername(fdaccept, (struct sockaddr*)&addr, &addr_len);
  
-                        struct sockaddr_in *s = (struct sockaddr_in*)&addr;
                         char ip[1024];
                         inet_ntop(AF_INET, &addr.sin_addr, ip, sizeof(ip));
-                        string ipstr(ip);
+                        string ipstr =  std::string(ip);
                         char host[1024];
                         char service[20];
                         getnameinfo((struct sockaddr*)&addr, sizeof(addr), host, sizeof(host), service, sizeof(service), 0);
                         string hostname(host);
-                        clientDetails c(hostname, ipstr , to_string(ntohs(addr.sin_port)), 1);
+                        clientDetails c(hostname, ipstr, 1);
                         loggedInClients.push_back(c);
                         
                         cout << "Connection accepted from host " << hostname.c_str() << " "
-                            << ipstr.c_str() << " " <<  ntohs(addr.sin_port) << endl;
+                            << ipstr.c_str() << endl;
 
-                        cout << "Server Statistics" << endl;
-                        
-
-/*                         cout << i << " " <<  loggedInClients[i].getClientName().c_str() << " " << loggedInClients[i].getClientIp().c_str() << " " << loggedInClients[i].getClientPort().c_str() << " " <<  loggedInClients[i].numMsgSent() << " " << loggedInClients[i].numMsgRecv() << " " << loggedString[loggedInClients[i].loggedIn()] << endl;
-  */                       print_server_statistics();
-/*
-                        printf("%5d%35s%20s%8s%3d%3d%7s\n", i, loggedInClients[i]->getClientName().c_str(), loggedInClients[i]->getClientIp().c_str(), loggedInClients[i]->getClientPort().c_str(),  loggedInClients[i]->numMsgSent(), loggedInClients[i]->numMsgRecv(), loggedString[loggedInClients[i]->loggedIn()]);
-                            cse4589_print_and_log("%-5d%-35s%-20s%-8s%-3d%-3d%-7s\n", i, loggedInClients[i]->getClientName().c_str(), loggedInClients[i]->getClientIp().c_str(), loggedInClients[i]->getClientPort().c_str(),  loggedInClients[i]->numMsgSent(), loggedInClients[i]->numMsgRecv(), loggedString[loggedInClients[i]->loggedIn()]);
-                        
-  */     
                         FD_SET(fdaccept, &master_list);
                         if(fdaccept > head_socket) head_socket = fdaccept;
                     }
                     /* Read from existing clients who have connected */
                     else {
                     /* Initialize buffer to receive response */
-			            char * buffer = (char*) malloc(sizeof(char)*256);
-			            memset(buffer, '\0', 256);
+			            char * buffer = (char*) malloc(sizeof(char)*1024);
+			            memset(buffer, '\0', 1024);
 			            if(recv(sock_index, buffer, BUFFER_SIZE, 0) <= 0)
 			            {
 				            close(sock_index);
@@ -311,8 +317,29 @@ void run_server(string server_port) {
 	
 				            cout << "Client sent: " << buffer << endl ;
 				            cout << "Echoing it back to the remote host..." << endl;
-				            if(send(fdaccept, buffer, strlen(buffer), 0) == strlen(buffer))
-				            cout << "Done!" << endl;
+                            string buf(buffer), str;
+                            str = "";
+                            stringstream s(buf);
+                            vector<string> tokens;
+                            while(getline(s, str, ' ')) {
+                                tokens.push_back(str);
+                            }
+                            
+                            if(strcmp(tokens[0].c_str(), "LOGIN") == 0)
+                            {
+                                                        struct sockaddr_in addr;
+                        socklen_t addr_len;
+                        addr_len = sizeof(addr);
+                        getpeername(fdaccept, (struct sockaddr*)&addr, &addr_len);
+
+                        char ip[1024];
+                        inet_ntop(AF_INET, &addr.sin_addr, ip, sizeof(ip));
+                        string ipstr =  std::string(ip);
+
+                                insertClientPort(ipstr, tokens[1]);
+				                if(send(fdaccept, buffer, strlen(buffer), 0) == strlen(buffer))
+                                    cout << "Done !" << endl;
+                            }
 				            fflush(stdout);
 			            }
 			            free(buffer);
@@ -332,11 +359,34 @@ bool compare_port(clientDetails a, clientDetails b)
     return a.getClientPort() < b.getClientPort();
 }
 
+void print_loggedIn_Client_List()
+{
+    sort(loggedInClients.begin(), loggedInClients.end(), compare_port);
+    for(int i = 0; i < loggedInClients.size(); i++)
+    {
+        if(strcmp("loggedin", loggedString[loggedInClients[i].loggedIn()]) == 0) {
+           cse4589_print_and_log("%-5d%-35s%-20s%-8s\n", i, loggedInClients[i].getClientName().c_str(), loggedInClients[i].getClientIp().c_str(), loggedInClients[i].getClientPort().c_str());  
+        }
+    }
+}
+
+void insertClientPort(string ip, string port)
+{
+    cout << "Insert port number: " << port << " for ip: " << ip;
+    for(int i = 0; i < loggedInClients.size(); i++)
+    {
+        if(ip == loggedInClients[i].getClientIp()) {
+            loggedInClients[i].setClientPort(port);
+            return;
+        }
+    }
+}
+
 void print_server_statistics()
 {
     sort(loggedInClients.begin(), loggedInClients.end(), compare_port);
     for(int i = 0; i < loggedInClients.size(); i++) 
-        printf("%5d%35s%20s%8s%3d%3d%20s\n", i, loggedInClients[i].getClientName().c_str(), loggedInClients[i].getClientIp().c_str(), loggedInClients[i].getClientPort().c_str(),  loggedInClients[i].numMsgSent(), loggedInClients[i].numMsgRecv(), loggedString[loggedInClients[i].loggedIn()]);
+        cse4589_print_and_log("%-5d%-35s%-8d%-8d%-8s\n", i, loggedInClients[i].getClientName().c_str(), loggedInClients[i].numMsgSent(), loggedInClients[i].numMsgRecv(), loggedString[loggedInClients[i].loggedIn()]);
 
 }
 
@@ -370,13 +420,18 @@ void run_client(string port)
           else if(strcmp(tokens[0].c_str(), "LOGIN") == 0) {
             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
             cout << "Connect to Server " << tokens[1] << ":" << tokens[2];
-            int server_fd = connect_to_host(tokens[1], tokens[2]);
-            if(send(server_fd, port.c_str(), sizeof(port.c_str()), 0) <= 0) {
+            connectedFd = connect_to_server(tokens[1], tokens[2]);
+
+            ostringstream s;
+            s << "LOGIN " << port;
+            string buffer(s.str());
+            if(send(connectedFd, buffer.c_str(), buffer.size(), 0) <= 0) {
                 perror("failed to send the port number to the server");
                 return;
             }
 
-            
+            s.clear();
+            buffer.clear();
         } else if(strcmp(tokens[0].c_str(), "REFRESH") == 0) {
                 cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
 
@@ -422,8 +477,7 @@ void print_ip(string cmd)
     server.sin_family = AF_INET;
     server.sin_port = htons(53);
 
-    if(-1 == connect(socketfd, (struct sockaddr*)&server, sizeof(server)) < 0)
-    {
+    if(-1 == connect(socketfd, (struct sockaddr*)&server, sizeof(server)) < 0) {
         close(socketfd);
         perror("Connect error");
         return;
