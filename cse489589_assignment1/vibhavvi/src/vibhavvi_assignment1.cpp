@@ -25,6 +25,7 @@
 
 #include <iostream>
 #include <stdio.h>
+#include <cstdio>
 #include <string.h>
 #include <cstring>
 #include <sstream>
@@ -114,13 +115,7 @@ class clientDetails
 
 vector<clientDetails> loggedInClients; // for server
 
-class listClients
-{
-    
-};
-
-
-
+vector<string> _list; // contains the list of loggedin clients received from the server
 
 /**
  * main function
@@ -339,7 +334,16 @@ void run_server(string server_port) {
                                 insertClientPort(ipstr, tokens[1]);
 				                if(send(fdaccept, buffer, strlen(buffer), 0) == strlen(buffer))
                                     cout << "Done !" << endl;
-                            }
+                            } else if(strcmp(tokens[0].c_str(), "LIST") == 0) {
+                                for(int i = 0; i < loggedInClients.size(); i++)
+                                {
+                                    sprintf(buffer, "%-5d%-35s%-20s%-8s\n", i+1, loggedInClients[i].getClientName().c_str(), loggedInClients[i].getClientIp().c_str(), loggedInClients[i].getClientPort().c_str());
+                                    if(-1 == send(fdaccept, buffer, strlen(buffer), 0)) {
+                                        perror("Failed to sent record to client");
+                                        return;
+                                    }
+                                }
+                            } else { }
 				            fflush(stdout);
 			            }
 			            free(buffer);
@@ -415,7 +419,34 @@ void run_client(string port)
             cse4589_print_and_log("PORT:%s\n", port.c_str());
         } else if(strcmp(tokens[0].c_str(), "LIST") == 0) {
             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
-            cse4589_print_and_log("host list\n");
+            if(send(connectedFd, tokens[0].c_str(), sizeof(tokens[0].c_str()), 0) <= 0) {
+                perror("failed to send the list command to the server");
+                return;
+            }
+
+            cout << "Sent list command " << endl;
+            char buffer[1024];
+            memset(&buffer, 0, sizeof(buffer));
+            char c;
+            while(c = recv(connectedFd, buffer, sizeof(buffer), 0 )) {
+                if(c == 0) {
+                    cout << "Done with receiving" << endl;
+                    break;
+                } else if(c == -1) {
+                    perror("Error in receiving");
+                    break;
+                } else {
+                     string str(buffer);
+                     cout << "Received from client.. " << endl << str.c_str();
+                    _list.push_back(str);
+                }
+            }
+            cout << "Done, receiving , now start printing";
+            for(int i = 0; i < _list.size(); i++)
+            {
+                cse4589_print_and_log("%s", _list[i].c_str());
+            }
+
         } /* Client only commands start here */
           else if(strcmp(tokens[0].c_str(), "LOGIN") == 0) {
             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
