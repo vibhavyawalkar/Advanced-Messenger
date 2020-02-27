@@ -327,14 +327,14 @@ void run_server(string server_port) {
                             
                             if(strcmp(tokens[0].c_str(), "LOGIN") == 0)
                             {
-                                                        struct sockaddr_in addr;
-                        socklen_t addr_len;
-                        addr_len = sizeof(addr);
-                        getpeername(fdaccept, (struct sockaddr*)&addr, &addr_len);
+                                struct sockaddr_in addr;
+                                socklen_t addr_len;
+                                addr_len = sizeof(addr);
+                                getpeername(fdaccept, (struct sockaddr*)&addr, &addr_len);
 
-                        char ip[1024];
-                        inet_ntop(AF_INET, &addr.sin_addr, ip, sizeof(ip));
-                        string ipstr =  std::string(ip);
+                                char ip[1024];
+                                inet_ntop(AF_INET, &addr.sin_addr, ip, sizeof(ip));
+                                string ipstr =  std::string(ip);
 
                                 insertClientPort(ipstr, tokens[1]);
 				                if(send(fdaccept, buffer, strlen(buffer), 0) == strlen(buffer))
@@ -372,7 +372,7 @@ void print_loggedIn_Client_List()
 
 void insertClientPort(string ip, string port)
 {
-    cout << "Insert port number: " << port << " for ip: " << ip;
+    cout << "Insert port number: " << port << " for ip: " << ip << endl;
     for(int i = 0; i < loggedInClients.size(); i++)
     {
         if(ip == loggedInClients[i].getClientIp()) {
