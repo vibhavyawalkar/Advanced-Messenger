@@ -48,7 +48,7 @@
 #define BUFFER_SIZE 256
 
 // Global connected FD for client
-int connectedFd;
+int connectedFd = 0;
 using namespace std;
 
 char loggedString[2][20] = {"loggedout", "loggedin"};
@@ -406,114 +406,156 @@ void print_server_statistics()
 
 void run_client(string port)
 {
+    fd_set master_list, watch_list;
+    /* Zero select FD sets */
+    FD_ZERO(&master_list);
+    FD_ZERO(&watch_list);
+
+    /* Register STDIN*/
+    FD_SET(STDIN, &master_list);
+    FD_SET(connectedFd, &master_list);
+    int head_socket = STDIN; // Initializing head socket to STDIN
+    int sock_index;
+
     while(1) {
-        fflush(stdout);
-        string cmd_input = "";
-        vector<string> tokens;
+        memcpy(&watch_list, &master_list, sizeof(master_list));
 
-        getline(cin, cmd_input);
-        stringstream line(cmd_input);
-        string str = "";
-        while(getline(line, str, ' ')) {
-            tokens.push_back(str);
-        }
+        cout << "Select blocking for activity..." << endl;
+        /*select() system call. This will block */
+        int selret = select(head_socket + 1, &watch_list, NULL, NULL, NULL);
+        if(selret < 0)
+            perror("select failed");
 
-        if(strcmp(tokens[0].c_str(), "AUTHOR") == 0) {
-            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
-            cse4589_print_and_log("I, %s, have read and understood the course academic integrity policy.\n", "vibhavvi");
-        } else if(strcmp(tokens[0].c_str(), "IP") == 0) {
-            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
-            print_ip(tokens[0]);
-        } else if(strcmp(tokens[0].c_str(), "PORT") == 0) {
-            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
-            cse4589_print_and_log("PORT:%s\n", port.c_str());
-        } else if(strcmp(tokens[0].c_str(), "LIST") == 0) {
-            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
-            for(int i = 0; i < _list.size(); i++)
-            {
-                cse4589_print_and_log("%s", _list[i].c_str());
-            }
+        cout << "Select returned" << endl;
+        /* Check if we have sockets/STDIN to process */
+        if(selret > 0) {
+            /*Looping through socket descriptors to check which ones are ready*/
+            for(sock_index = 0; sock_index <= head_socket; sock_index + 1) {
+                if(FD_ISSET(sock_index, &watch_list)) {
+                    /*Check if new command on STDIN */
+                    if(sock_index == STDIN) {
+                        string cmd_input = "";
+                        vector<string> tokens;
 
-        } /* Client only commands start here */
-          else if(strcmp(tokens[0].c_str(), "LOGIN") == 0) {
-            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
-            cout << "Connect to Server " << tokens[1] << ":" << tokens[2];
-            connectedFd = connect_to_server(tokens[1], tokens[2]);
+                        getline(cin, cmd_input);
+                        stringstream line(cmd_input);
+                        string str = "";
+                        while(getline(line, str, ' ')) {
+                            tokens.push_back(str);
+                        }
 
-            ostringstream s;
-            s << "LOGIN " << port;
-            string buf(s.str());
-            s.clear();
-            if(send(connectedFd, buf.c_str(), buf.size(), 0) <= 0) {
-                perror("failed to send the port number to the server");
-                return;
-            }
-            s.clear();
-            buf.clear();
-            fflush(stdout);
-            
-            char buffer[1024];
-            memset(&buffer, 0, sizeof(buffer));
-            char c;
-            while(1) {
-                c = recv(connectedFd, buffer, sizeof(buffer), 0);
-                if(c == 0) {
-                    cout << "Done with receiving" << endl;
-                    break;
-                } else if(c == -1) {
-                    perror("Error in receiving");
-                    break;
-                } else {
-                     string str(buffer);
-                     cout << "Received from server.. " << endl << str << "Size" << str.length() << endl;
-                     //fflush(stdout);
-                     if(str != "$")
-                     {
-                        cout << " COming out of loop" << endl;
-                        break;
-                     }
-                    _list.push_back(str);
-                }
-                //fflush(stdout);
-                str.clear();
-                //memset(&buffer, 0, sizeof(buffer));
-            }
-            str.clear();
-            fflush(stdout);
-            cout << "Done, receiving , now start printing" << endl;
-            fflush(stdout);
-            for(int i = 0; i < _list.size(); i++)
-            {
-                cse4589_print_and_log("%s", _list[i].c_str());
-            }
+                        if(strcmp(tokens[0].c_str(), "AUTHOR") == 0) {
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+                            cse4589_print_and_log("I, %s, have read and understood the course academic integrity policy.\n", "vibhavvi");
+                        } else if(strcmp(tokens[0].c_str(), "IP") == 0) {
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+                            print_ip(tokens[0]);
+                        } else if(strcmp(tokens[0].c_str(), "PORT") == 0) {
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+                            cse4589_print_and_log("PORT:%s\n", port.c_str());
+                        } else if(strcmp(tokens[0].c_str(), "LIST") == 0) {
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+                            for(int i = 0; i < _list.size(); i++)
+                            {
+                                cse4589_print_and_log("%s", _list[i].c_str());
+                            }
 
+                        } /* Client only commands start here */
+                          else if(strcmp(tokens[0].c_str(), "LOGIN") == 0) {
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+                            cout << "Connect to Server " << tokens[1] << ":" << tokens[2];
+                            connectedFd = connect_to_server(tokens[1], tokens[2]);
+                            cout << "connect returned" << endl;
+                            if(connectedFd < 0)
+                                perror("Connect failed");
 
-        } else if(strcmp(tokens[0].c_str(), "REFRESH") == 0) {
-                cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+                            ostringstream s;
+                            s << "LOGIN " << port;
+                            string buf(s.str());
+                            s.clear();
+                            if(send(connectedFd, buf.c_str(), buf.size(), 0) <= 0) {
+                                perror("failed to send the port number to the server");
+                                return;
+                            }
+                            s.clear();
+                            buf.clear();
+                            fflush(stdout);
+                            cout << "connectedFd = " << endl;
+                            FD_SET(connectedFd, &master_list);
+                            if(connectedFd > head_socket) head_socket = connectedFd;
+     /*       
+                            char buffer[1024];
+                            memset(&buffer, 0, sizeof(buffer));
+                            int c;
+                            while(1) {
+                                c = recv(connectedFd, buffer, sizeof(buffer), 0);
+                                if(c == 0) {
+                                    cout << "Done with receiving" << endl;
+                                    break;
+                                } else if(c == -1) {
+                                    perror("Error in receiving");
+                                    break;
+                                } else {
+                                    string str(buffer);
+                                    cout << "Received from server.. " << endl << str << "Size" << str.length() << endl;
+                                    //fflush(stdout);
+                                    if(str != "$")
+                                    {
+                                        cout << " COming out of loop" << endl;
+                                        break;
+                                    }
+                                    _list.push_back(str);
+                                }
+                                str.clear();
+                            }
+                            str.clear();
+*/
 
-        } else if(strcmp(tokens[0].c_str(), "SEND") == 0) {
-                cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
-                cout << "Send message to client " << tokens[1] << ":" << tokens[2];
-        } else if(strcmp(tokens[0].c_str(), "BROADCAST") == 0) {
-                cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
-                cout << "Message " << tokens[1];
-        } else if(strcmp(tokens[0].c_str(), "BLOCK") == 0) {
-                cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
-                cout << "Client IP " << tokens[1];
-        } else if(strcmp(tokens[0].c_str(), "UNBLOCK") == 0) {
-                cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
-                cout << "Unblock IP " << tokens[1];
-        } else if(strcmp(tokens[0].c_str(), "LOGOUT") == 0) {
-                cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
-        } else if(strcmp(tokens[0].c_str(), "EXIT") == 0) {
-                cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
-        } else {
-                cse4589_print_and_log("[%s:ERROR]\n", tokens[0].c_str());
-        }
-        cse4589_print_and_log("[%s:END]\n", tokens[0].c_str());
-        cmd_input.clear();
-        line.clear();
-    }
+                        } else if(strcmp(tokens[0].c_str(), "REFRESH") == 0) {
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+
+                        } else if(strcmp(tokens[0].c_str(), "SEND") == 0) {
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+                            cout << "Send message to client " << tokens[1] << ":" << tokens[2];
+                        } else if(strcmp(tokens[0].c_str(), "BROADCAST") == 0) {
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+                            cout << "Message " << tokens[1];
+                        } else if(strcmp(tokens[0].c_str(), "BLOCK") == 0) {
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+                            cout << "Client IP " << tokens[1];
+                        } else if(strcmp(tokens[0].c_str(), "UNBLOCK") == 0) {
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+                            cout << "Unblock IP " << tokens[1];
+                        } else if(strcmp(tokens[0].c_str(), "LOGOUT") == 0) {
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+                        } else if(strcmp(tokens[0].c_str(), "EXIT") == 0) {
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+                        } else {
+                            cse4589_print_and_log("[%s:ERROR]\n", tokens[0].c_str());
+                        }
+                        cse4589_print_and_log("[%s:END]\n", tokens[0].c_str());
+                        cmd_input.clear();
+                        line.clear();
+                    } else { /* Receive a response from server over connected socket*/
+                        char buffer[1024];
+                        memset(buffer, '\0', 1024);
+                        cout << "ELSE" << endl;
+                        if(recv(sock_index, buffer, sizeof(buffer), 0) <= 0) 
+                        {
+                            close(sock_index);
+                            cout << "Remote Host terminated connection!" << endl;
+
+                            /*Remove from watched list*/
+                            FD_CLR(sock_index, &master_list);
+                        } else {
+                            cout << "Server sent: " << buffer << endl;
+                            fflush(stdout);
+                        }
+                    }
+                } /* end of if lloop */
+            } /*end of for loop */
+        } /* end of if(selret) loop */
+    } /* End of infinite while loop */
 } /* end of run client function */
 
 void print_ip(string cmd)
