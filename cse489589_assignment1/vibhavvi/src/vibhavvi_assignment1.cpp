@@ -47,6 +47,9 @@
 #define TRUE 1
 #define BUFFER_SIZE 256
 
+// Forward Declaration
+class clientDetails;
+
 // Global connected FD for client
 int connectedFd = 0;
 using namespace std;
@@ -60,6 +63,10 @@ void print_ip(string cmd);
 void print_server_statistics();
 void print_loggedIn_Client_List();
 void insertClientPort(string ip, string port);
+void logoutClient(string ip);
+int presentInLoggedinList(string ip);
+int presentInClientList(string str);
+bool compare_port(clientDetails a, clientDetails b);
 
 /* clientDetails contains the details about the clients to be maintained at
    the server */
@@ -81,6 +88,16 @@ class clientDetails
         loggedInFlag = login;
         num_msg_sent = 0;
         num_msg_recv = 0;
+    }
+
+    void login()
+    {
+        loggedInFlag = 1;
+    }
+
+    void logout()
+    {
+        loggedInFlag = 0;
     }
 
     void setClientPort(string port)
@@ -289,12 +306,20 @@ void run_server(string server_port) {
                         char service[20];
                         getnameinfo((struct sockaddr*)&addr, sizeof(addr), host, sizeof(host), service, sizeof(service), 0);
                         string hostname(host);
-                        clientDetails c(hostname, ipstr, 1);
-                        loggedInClients.push_back(c);
                         
                         cout << "Connection accepted from host " << hostname.c_str() << " "
                             << ipstr.c_str() << endl;
 
+                        int i = -1;
+                        if((i = presentInLoggedinList(ipstr)) == -1) {
+                            clientDetails c(hostname, ipstr, 1);
+                            loggedInClients.push_back(c);
+                        } else if(loggedInClients[i].loggedIn() == 0) {
+                            loggedInClients[i].login();
+                        } else {
+                            cout << "Client already logged in!!" << endl;
+                        }
+                        
                         FD_SET(fdaccept, &master_list);
                         if(fdaccept > head_socket) head_socket = fdaccept;
                     }
@@ -326,34 +351,54 @@ void run_server(string server_port) {
                             s.clear();
                             buf.clear();
                             str.clear();
+
+                            struct sockaddr_in addr;
+                            socklen_t addr_len;
+                            addr_len = sizeof(addr);
+                            getpeername(fdaccept, (struct sockaddr*)&addr, &addr_len);
+
+                            char ip[1024];
+                            inet_ntop(AF_INET, &addr.sin_addr, ip, sizeof(ip));
+                            string ipstr =  std::string(ip);
+
                             if(strcmp(tokens[0].c_str(), "LOGIN") == 0)
                             {
-                                struct sockaddr_in addr;
-                                socklen_t addr_len;
-                                addr_len = sizeof(addr);
-                                getpeername(fdaccept, (struct sockaddr*)&addr, &addr_len);
-
-                                char ip[1024];
-                                inet_ntop(AF_INET, &addr.sin_addr, ip, sizeof(ip));
-                                string ipstr =  std::string(ip);
-
-                                insertClientPort(ipstr, tokens[1]);
-                                for(int i = 0; i < loggedInClients.size(); i++)
-                                {
-                                    sprintf(buffer, "%-5d%-35s%-20s%-8s\n", i+1, loggedInClients[i].getClientName().c_str(), loggedInClients[i].getClientIp().c_str(), loggedInClients[i].getClientPort().c_str());
-                                    if(-1 == send(fdaccept, buffer, strlen(buffer), 0)) {
-                                        perror("Failed to sent record to client");
+                            
+                                    insertClientPort(ipstr, tokens[1]);
+                                    sort(loggedInClients.begin(), loggedInClients.end(), compare_port);
+                                    for(int i = 0; i < loggedInClients.size(); i++)
+                                    {
+                                        if(strcmp("loggedin", loggedString[loggedInClients[i].loggedIn()]) == 0) {
+                                            sprintf(buffer, "%-5d%-35s%-20s%-8s\n", i+1, loggedInClients[i].getClientName().c_str(), loggedInClients[i].getClientIp().c_str(), loggedInClients[i].getClientPort().c_str());
+                                            if(-1 == send(fdaccept, buffer, strlen(buffer), 0)) {
+                                                perror("Failed to sent record to client");
+                                                return;
+                                            }
+                                            fflush(stdout);
+                                        }
+                                    }
+                               /*     if(-1 == send(fdaccept, "$", 1, 0)) {
+                                        perror("Failed to send $ termination symbol");
                                         return;
                                     }
-                                    fflush(stdout);
-                                }
-                                if(-1 == send(fdaccept, "$", 1, 0)) {
-                                    perror("Failed to send $ termination symbol");
-                                    return;
-                                }
-                                fflush(stdout);
+                                    fflush(stdout);*/
+                                
 
-                            } else if(strcmp(tokens[0].c_str(), "SEND") == 0) {
+                            } else if(strcmp(tokens[0].c_str(), "LOGOUT") == 0) {
+                                logoutClient(ipstr);
+                            } else if(strcmp(tokens[0].c_str(), "REFRESH") == 0) {
+                                for(int i = 0; i < loggedInClients.size(); i++)
+                                {
+                                    if(strcmp("loggedin", loggedString[loggedInClients[i].loggedIn()]) == 0) {
+                                        sprintf(buffer, "%-5d%-35s%-20s%-8s\n", i+1, loggedInClients[i].getClientName().c_str(), loggedInClients[i].getClientIp().c_str(), loggedInClients[i].getClientPort().c_str());
+                                        if(-1 == send(fdaccept, buffer, strlen(buffer), 0)) {
+                                            perror("Failed to sent record to client");
+                                            return;
+                                        }
+                                        fflush(stdout);
+                                    }
+                                }
+
                             } else { }
 				            fflush(stdout);
 			            }
@@ -373,13 +418,51 @@ bool compare_port(clientDetails a, clientDetails b)
     return stoi(a.getClientPort()) < stoi(b.getClientPort());
 }
 
+int presentInClientList(string str) {
+    int ret = -1;
+    for(int i = 0; i < _list.size(); i++)
+    {
+        if(str == _list[i])
+        {
+            ret = i;
+            return ret;
+        }
+    }
+    return ret;
+}
+
+int presentInLoggedinList(string ip) {
+    int ret = -1;
+    for(int i = 0; i < loggedInClients.size(); i++)
+    {
+        if(ip == loggedInClients[i].getClientIp()) {
+            ret = i;
+            return ret;
+        }
+    }
+    return ret;
+}
+
+void logoutClient(string ip)
+{
+    for(int i = 0; i < loggedInClients.size(); i++)
+    {
+        if(ip == loggedInClients[i].getClientIp()) {
+            loggedInClients[i].logout();
+            break;
+        }
+    }
+}
+
 void print_loggedIn_Client_List()
 {
     sort(loggedInClients.begin(), loggedInClients.end(), compare_port);
+    int j = 1;
     for(int i = 0; i < loggedInClients.size(); i++)
     {
         if(strcmp("loggedin", loggedString[loggedInClients[i].loggedIn()]) == 0) {
-           cse4589_print_and_log("%-5d%-35s%-20s%-8s\n", i+1, loggedInClients[i].getClientName().c_str(), loggedInClients[i].getClientIp().c_str(), loggedInClients[i].getClientPort().c_str());  
+           cse4589_print_and_log("%-5d%-35s%-20s%-8s\n", j, loggedInClients[i].getClientName().c_str(), loggedInClients[i].getClientIp().c_str(), loggedInClients[i].getClientPort().c_str());
+           j++;
         }
     }
 }
@@ -480,39 +563,19 @@ void run_client(string port)
                             s.clear();
                             buf.clear();
                             fflush(stdout);
-                            cout << "connectedFd = " << endl;
+
                             FD_SET(connectedFd, &master_list);
                             if(connectedFd > head_socket) head_socket = connectedFd;
-     /*       
-                            char buffer[1024];
-                            memset(&buffer, 0, sizeof(buffer));
-                            int c;
-                            while(1) {
-                                c = recv(connectedFd, buffer, sizeof(buffer), 0);
-                                if(c == 0) {
-                                    cout << "Done with receiving" << endl;
-                                    break;
-                                } else if(c == -1) {
-                                    perror("Error in receiving");
-                                    break;
-                                } else {
-                                    string str(buffer);
-                                    cout << "Received from server.. " << endl << str << "Size" << str.length() << endl;
-                                    //fflush(stdout);
-                                    if(str != "$")
-                                    {
-                                        cout << " COming out of loop" << endl;
-                                        break;
-                                    }
-                                    _list.push_back(str);
-                                }
-                                str.clear();
-                            }
-                            str.clear();
-*/
 
                         } else if(strcmp(tokens[0].c_str(), "REFRESH") == 0) {
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+                            string buf = std::string("REFRESH");
+                            if(send(connectedFd, buf.c_str(), buf.size(), 0) <= 0) {
+                                perror("failed to send the LOGOUT string to the server");
+                                return;
+                            }
+                            buf.clear();
+                            fflush(stdout);
 
                         } else if(strcmp(tokens[0].c_str(), "SEND") == 0) {
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
@@ -528,6 +591,14 @@ void run_client(string port)
                             cout << "Unblock IP " << tokens[1];
                         } else if(strcmp(tokens[0].c_str(), "LOGOUT") == 0) {
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+                            
+                            string buf = std::string("LOGOUT");
+                            if(send(connectedFd, buf.c_str(), buf.size(), 0) <= 0) {
+                                perror("failed to send the LOGOUT string to the server");
+                                return;
+                            }
+                            buf.clear();
+                            fflush(stdout);
                         } else if(strcmp(tokens[0].c_str(), "EXIT") == 0) {
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                         } else {
@@ -548,18 +619,15 @@ void run_client(string port)
                             FD_CLR(sock_index, &master_list);
                         } else {
                             string str(buffer);
-                            cout << "Received from server.. " << endl << str << "Size" << str.length() << endl;
-                            if(str == "$")
-                            {
-                                cout << " Coming out of loop" << endl;
-                                break;
-                            }
-                            _list.push_back(str);
+                            cout << "Received from server.. " << str << endl;
+
+                            if(-1 == presentInClientList(str))
+                                _list.push_back(str);
                             fflush(stdout);
                             str.clear();
                         }
                     }
-                } /* end of if lloop */
+                } /* end of if loop */
             } /*end of for loop */
         } /* end of if(selret) loop */
     } /* End of infinite while loop */
