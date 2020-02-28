@@ -430,7 +430,7 @@ void run_client(string port)
         /* Check if we have sockets/STDIN to process */
         if(selret > 0) {
             /*Looping through socket descriptors to check which ones are ready*/
-            for(sock_index = 0; sock_index <= head_socket; sock_index + 1) {
+            for(sock_index = 0; sock_index <= head_socket; sock_index += 1) {
                 if(FD_ISSET(sock_index, &watch_list)) {
                     /*Check if new command on STDIN */
                     if(sock_index == STDIN) {
@@ -539,7 +539,6 @@ void run_client(string port)
                     } else { /* Receive a response from server over connected socket*/
                         char buffer[1024];
                         memset(buffer, '\0', 1024);
-                        cout << "ELSE" << endl;
                         if(recv(sock_index, buffer, sizeof(buffer), 0) <= 0) 
                         {
                             close(sock_index);
@@ -548,8 +547,16 @@ void run_client(string port)
                             /*Remove from watched list*/
                             FD_CLR(sock_index, &master_list);
                         } else {
-                            cout << "Server sent: " << buffer << endl;
+                            string str(buffer);
+                            cout << "Received from server.. " << endl << str << "Size" << str.length() << endl;
+                            if(str == "$")
+                            {
+                                cout << " Coming out of loop" << endl;
+                                break;
+                            }
+                            _list.push_back(str);
                             fflush(stdout);
+                            str.clear();
                         }
                     }
                 } /* end of if lloop */
