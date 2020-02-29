@@ -230,7 +230,9 @@ void run_server(string server_port) {
     FD_SET(STDIN, &master_list);
 
     int head_socket = server_socket;
-    int sock_index;	
+    int sock_index;
+
+    string previous_cmd = "";
     while(TRUE) {
         memcpy(&watch_list, &master_list, sizeof(master_list));
 
@@ -242,6 +244,7 @@ void run_server(string server_port) {
         
         cout << "Select returned" << endl;
         fflush(stdout);
+
 	    /* Check if we have sockets/STDIN to process */
 	    if(selret > 0) {
 	        /* Looping through socket descriptors to check which ones are ready */
@@ -262,22 +265,28 @@ void run_server(string server_port) {
 
                         if(strcmp(tokens[0].c_str(), "AUTHOR") == 0)
                         {
+                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cse4589_print_and_log("I, %s, have read and understood the course academic integrity policy.\n", "vibhavvi");
                         } else if(strcmp(tokens[0].c_str(), "IP") == 0) {
+                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             print_ip(tokens[0]);
                         } else if(strcmp(tokens[0].c_str(), "PORT") == 0) {
+                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cse4589_print_and_log("PORT:%s\n", server_port.c_str());
                         } else if(strcmp(tokens[0].c_str(), "LIST") == 0) {
+                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             print_loggedIn_Client_List(); 
                         } /* Server only commands */
                           else if(strcmp(tokens[0].c_str(), "STATISTICS") == 0) {
+                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             print_server_statistics();
                         } else if(strcmp(tokens[0].c_str(), "BLOCKED") == 0) {
+                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                         } else {
                             cse4589_print_and_log("[%s:ERROR]\n", tokens[0].c_str());
@@ -377,11 +386,16 @@ void run_server(string server_port) {
                                             fflush(stdout);
                                         }
                                     }
-                               /*     if(-1 == send(fdaccept, "$", 1, 0)) {
+                                    fflush(stdout);
+                                    /*
+                                    memset(buffer, '\0', sizeof(buffer));
+                                    buffer[0] = 'a';
+                               if(-1 == send(fdaccept, buffer , strlen(buffer), 0)) {
                                         perror("Failed to send $ termination symbol");
                                         return;
                                     }
-                                    fflush(stdout);*/
+                                    fflush(stdout);
+                                    */
                                 
 
                             } else if(strcmp(tokens[0].c_str(), "LOGOUT") == 0) {
@@ -499,7 +513,7 @@ void run_client(string port)
     FD_SET(connectedFd, &master_list);
     int head_socket = STDIN; // Initializing head socket to STDIN
     int sock_index;
-
+    string previous_cmd = "";
     while(1) {
         memcpy(&watch_list, &master_list, sizeof(master_list));
 
@@ -510,6 +524,7 @@ void run_client(string port)
             perror("select failed");
 
         cout << "Select returned" << endl;
+
         /* Check if we have sockets/STDIN to process */
         if(selret > 0) {
             /*Looping through socket descriptors to check which ones are ready*/
@@ -528,15 +543,19 @@ void run_client(string port)
                         }
 
                         if(strcmp(tokens[0].c_str(), "AUTHOR") == 0) {
+                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cse4589_print_and_log("I, %s, have read and understood the course academic integrity policy.\n", "vibhavvi");
                         } else if(strcmp(tokens[0].c_str(), "IP") == 0) {
+                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             print_ip(tokens[0]);
                         } else if(strcmp(tokens[0].c_str(), "PORT") == 0) {
+                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cse4589_print_and_log("PORT:%s\n", port.c_str());
                         } else if(strcmp(tokens[0].c_str(), "LIST") == 0) {
+                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             for(int i = 0; i < _list.size(); i++)
                             {
@@ -545,6 +564,7 @@ void run_client(string port)
 
                         } /* Client only commands start here */
                           else if(strcmp(tokens[0].c_str(), "LOGIN") == 0) {
+                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cout << "Connect to Server " << tokens[1] << ":" << tokens[2];
                             connectedFd = connect_to_server(tokens[1], tokens[2]);
@@ -568,6 +588,7 @@ void run_client(string port)
                             if(connectedFd > head_socket) head_socket = connectedFd;
 
                         } else if(strcmp(tokens[0].c_str(), "REFRESH") == 0) {
+                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             string buf = std::string("REFRESH");
                             if(send(connectedFd, buf.c_str(), buf.size(), 0) <= 0) {
@@ -578,18 +599,23 @@ void run_client(string port)
                             fflush(stdout);
 
                         } else if(strcmp(tokens[0].c_str(), "SEND") == 0) {
+                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cout << "Send message to client " << tokens[1] << ":" << tokens[2];
                         } else if(strcmp(tokens[0].c_str(), "BROADCAST") == 0) {
+                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cout << "Message " << tokens[1];
                         } else if(strcmp(tokens[0].c_str(), "BLOCK") == 0) {
+                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cout << "Client IP " << tokens[1];
                         } else if(strcmp(tokens[0].c_str(), "UNBLOCK") == 0) {
+                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cout << "Unblock IP " << tokens[1];
                         } else if(strcmp(tokens[0].c_str(), "LOGOUT") == 0) {
+                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             
                             string buf = std::string("LOGOUT");
@@ -600,6 +626,7 @@ void run_client(string port)
                             buf.clear();
                             fflush(stdout);
                         } else if(strcmp(tokens[0].c_str(), "EXIT") == 0) {
+                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                         } else {
                             cse4589_print_and_log("[%s:ERROR]\n", tokens[0].c_str());
@@ -609,8 +636,9 @@ void run_client(string port)
                         line.clear();
                     } else { /* Receive a response from server over connected socket*/
                         char buffer[1024];
-                        memset(buffer, '\0', 1024);
-                        if(recv(sock_index, buffer, sizeof(buffer), 0) <= 0) 
+                        memset(buffer, '\0', sizeof(buffer));
+                        string str = "";
+                        if((recv(sock_index, buffer, sizeof(buffer), 0)) <= 0) 
                         {
                             close(sock_index);
                             cout << "Remote Host terminated connection!" << endl;
@@ -618,13 +646,15 @@ void run_client(string port)
                             /*Remove from watched list*/
                             FD_CLR(sock_index, &master_list);
                         } else {
-                            string str(buffer);
-                            cout << "Received from server.. " << str << endl;
-
-                            if(-1 == presentInClientList(str))
-                                _list.push_back(str);
-                            fflush(stdout);
-                            str.clear();
+                            //str.clear();
+                            if(previous_cmd == "LOGIN")
+                            {
+                                str = std::string(buffer);
+                                cout << "Received from server.. " << endl << str << endl;
+                                if(-1 == presentInClientList(str))
+                                    _list.push_back(str);
+                                fflush(stdout);
+                            }
                         }
                     }
                 } /* end of if loop */
