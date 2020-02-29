@@ -38,7 +38,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <algorithm>
-
+#include <unordered_map>
 #include "../include/global.h"
 #include "../include/logger.h"
 
@@ -67,6 +67,8 @@ void logoutClient(string ip);
 int presentInLoggedinList(string ip);
 int presentInClientList(string str);
 bool compare_port(clientDetails a, clientDetails b);
+
+unordered_map<string, int> ip_fd_map;
 
 /* clientDetails contains the details about the clients to be maintained at
    the server */
@@ -232,7 +234,6 @@ void run_server(string server_port) {
     int head_socket = server_socket;
     int sock_index;
 
-    string previous_cmd = "";
     while(TRUE) {
         memcpy(&watch_list, &master_list, sizeof(master_list));
 
@@ -265,28 +266,22 @@ void run_server(string server_port) {
 
                         if(strcmp(tokens[0].c_str(), "AUTHOR") == 0)
                         {
-                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cse4589_print_and_log("I, %s, have read and understood the course academic integrity policy.\n", "vibhavvi");
                         } else if(strcmp(tokens[0].c_str(), "IP") == 0) {
-                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             print_ip(tokens[0]);
                         } else if(strcmp(tokens[0].c_str(), "PORT") == 0) {
-                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cse4589_print_and_log("PORT:%s\n", server_port.c_str());
                         } else if(strcmp(tokens[0].c_str(), "LIST") == 0) {
-                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             print_loggedIn_Client_List(); 
                         } /* Server only commands */
                           else if(strcmp(tokens[0].c_str(), "STATISTICS") == 0) {
-                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             print_server_statistics();
                         } else if(strcmp(tokens[0].c_str(), "BLOCKED") == 0) {
-                            previous_cmd = tokens[0].c_str();
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                         } else {
                             cse4589_print_and_log("[%s:ERROR]\n", tokens[0].c_str());
@@ -329,6 +324,7 @@ void run_server(string server_port) {
                             cout << "Client already logged in!!" << endl;
                         }
                         
+                        ip_fd_map[ipstr] = fdaccept;
                         FD_SET(fdaccept, &master_list);
                         if(fdaccept > head_socket) head_socket = fdaccept;
                     }
@@ -347,8 +343,6 @@ void run_server(string server_port) {
 			            } else {
 	
 				            cout << "Client sent: " << buffer << endl;
-                            fflush(stdout);
-				            cout << "Echoing it back to the remote host..." << endl;
                             fflush(stdout);
                             string buf(buffer), str;
                             str = "";
@@ -370,6 +364,7 @@ void run_server(string server_port) {
                             inet_ntop(AF_INET, &addr.sin_addr, ip, sizeof(ip));
                             string ipstr =  std::string(ip);
 
+                            cout << "Client IP " << ipstr << endl;
                             if(strcmp(tokens[0].c_str(), "LOGIN") == 0)
                             {
                             
@@ -409,10 +404,24 @@ void run_server(string server_port) {
                                             perror("Failed to sent record to client");
                                             return;
                                         }
+                                        cout << "Server sending " << endl;
                                         fflush(stdout);
                                     }
                                 }
-
+                                fflush(stdout);
+                            } else if(strcmp(tokens[0].c_str(), "SEND") == 0) {
+                                string dest_ip = tokens[1];
+                                string msg = tokens[2];
+                                cout << "Received send request at the server" << endl;
+                                if(-1 == send(ip_fd_map[dest_ip], msg.c_str(), strlen(msg.c_str()),0 ))
+                                {
+                                    perror("Failed to send the message to the destination");
+                                    return;
+                                }
+                                cse4589_print_and_log("[%s:SUCCESS]\n", "RELAYED");
+                                cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n",ipstr.c_str(), dest_ip.c_str(), msg.c_str());
+                                cse4589_print_and_log("[%s:END]\n", "RELAYED");
+                                fflush(stdout);
                             } else { }
 				            fflush(stdout);
 			            }
@@ -543,19 +552,19 @@ void run_client(string port)
                         }
 
                         if(strcmp(tokens[0].c_str(), "AUTHOR") == 0) {
-                            previous_cmd = tokens[0].c_str();
+                            previous_cmd = tokens[0];
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cse4589_print_and_log("I, %s, have read and understood the course academic integrity policy.\n", "vibhavvi");
                         } else if(strcmp(tokens[0].c_str(), "IP") == 0) {
-                            previous_cmd = tokens[0].c_str();
+                            previous_cmd = tokens[0];
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             print_ip(tokens[0]);
                         } else if(strcmp(tokens[0].c_str(), "PORT") == 0) {
-                            previous_cmd = tokens[0].c_str();
+                            previous_cmd = tokens[0];
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cse4589_print_and_log("PORT:%s\n", port.c_str());
                         } else if(strcmp(tokens[0].c_str(), "LIST") == 0) {
-                            previous_cmd = tokens[0].c_str();
+                            previous_cmd = tokens[0];
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             for(int i = 0; i < _list.size(); i++)
                             {
@@ -564,7 +573,8 @@ void run_client(string port)
 
                         } /* Client only commands start here */
                           else if(strcmp(tokens[0].c_str(), "LOGIN") == 0) {
-                            previous_cmd = tokens[0].c_str();
+                            previous_cmd.clear();
+                            previous_cmd = tokens[0];
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cout << "Connect to Server " << tokens[1] << ":" << tokens[2];
                             connectedFd = connect_to_server(tokens[1], tokens[2]);
@@ -580,7 +590,6 @@ void run_client(string port)
                                 perror("failed to send the port number to the server");
                                 return;
                             }
-                            s.clear();
                             buf.clear();
                             fflush(stdout);
 
@@ -588,7 +597,8 @@ void run_client(string port)
                             if(connectedFd > head_socket) head_socket = connectedFd;
 
                         } else if(strcmp(tokens[0].c_str(), "REFRESH") == 0) {
-                            previous_cmd = tokens[0].c_str();
+                            previous_cmd.clear();
+                            previous_cmd = tokens[0];
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             string buf = std::string("REFRESH");
                             if(send(connectedFd, buf.c_str(), buf.size(), 0) <= 0) {
@@ -597,25 +607,39 @@ void run_client(string port)
                             }
                             buf.clear();
                             fflush(stdout);
+                            _list.clear();
+                            cout << "list size after truncate " << _list.size() << endl;
 
                         } else if(strcmp(tokens[0].c_str(), "SEND") == 0) {
-                            previous_cmd = tokens[0].c_str();
+                            previous_cmd = tokens[0];
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
-                            cout << "Send message to client " << tokens[1] << ":" << tokens[2];
+                            cout << "Send message to client " << tokens[1] << " MSG:" << tokens[2] << endl;
+
+                            ostringstream s;
+                            s << tokens[0] << " " << tokens[1] << " " << tokens[2];
+                            string buf(s.str());
+                            s.clear();
+                            if(send(connectedFd, buf.c_str(), buf.size(), 0) <= 0) {
+                                perror("failed to send the message from the client");
+                                return;
+                            }
+                            buf.clear();
+                            fflush(stdout);
+
                         } else if(strcmp(tokens[0].c_str(), "BROADCAST") == 0) {
-                            previous_cmd = tokens[0].c_str();
+                            previous_cmd = tokens[0];
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cout << "Message " << tokens[1];
                         } else if(strcmp(tokens[0].c_str(), "BLOCK") == 0) {
-                            previous_cmd = tokens[0].c_str();
+                            previous_cmd = tokens[0];
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cout << "Client IP " << tokens[1];
                         } else if(strcmp(tokens[0].c_str(), "UNBLOCK") == 0) {
-                            previous_cmd = tokens[0].c_str();
+                            previous_cmd = tokens[0];
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cout << "Unblock IP " << tokens[1];
                         } else if(strcmp(tokens[0].c_str(), "LOGOUT") == 0) {
-                            previous_cmd = tokens[0].c_str();
+                            previous_cmd = tokens[0];
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             
                             string buf = std::string("LOGOUT");
@@ -626,7 +650,7 @@ void run_client(string port)
                             buf.clear();
                             fflush(stdout);
                         } else if(strcmp(tokens[0].c_str(), "EXIT") == 0) {
-                            previous_cmd = tokens[0].c_str();
+                            previous_cmd = tokens[0];
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                         } else {
                             cse4589_print_and_log("[%s:ERROR]\n", tokens[0].c_str());
@@ -647,13 +671,22 @@ void run_client(string port)
                             FD_CLR(sock_index, &master_list);
                         } else {
                             //str.clear();
-                            if(previous_cmd == "LOGIN")
-                            {
+                            if(previous_cmd == "LOGIN") {
                                 str = std::string(buffer);
-                                cout << "Received from server.. " << endl << str << endl;
+                                cout << "Received from server.. for login " << endl << str << endl;
                                 if(-1 == presentInClientList(str))
                                     _list.push_back(str);
                                 fflush(stdout);
+                            } else if(previous_cmd == "REFRESH") {
+                                str = std::string(buffer);
+                                cout << "Received from server.. for refresh " << endl << str << endl;
+                                _list.push_back(str);
+                            } else { /* Receive message from the server sent by some client */
+                                str = std::string(buffer);
+                                cout << "Received from the server..for send " << endl << str << endl;
+                                cse4589_print_and_log("[%s:SUCCESS]\n", "RECEIVED");
+                                cse4589_print_and_log("msg from:%s\n[msg]:%s\n", "server", str.c_str());
+                                cse4589_print_and_log("[%s:END]\n", "RECEIVED");
                             }
                         }
                     }
