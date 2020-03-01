@@ -365,22 +365,45 @@ void run_server(string server_port) {
                             string ipstr =  std::string(ip);
 
                             cout << "Client IP " << ipstr << endl;
+                            memset(buffer, '\0', 1024 );
                             if(strcmp(tokens[0].c_str(), "LOGIN") == 0)
                             {
                             
                                     insertClientPort(ipstr, tokens[1]);
                                     sort(loggedInClients.begin(), loggedInClients.end(), compare_port);
+                                    string records = "";
                                     for(int i = 0; i < loggedInClients.size(); i++)
                                     {
                                         if(strcmp("loggedin", loggedString[loggedInClients[i].loggedIn()]) == 0) {
                                             sprintf(buffer, "%-5d%-35s%-20s%-8s\n", i+1, loggedInClients[i].getClientName().c_str(), loggedInClients[i].getClientIp().c_str(), loggedInClients[i].getClientPort().c_str());
-                                            if(-1 == send(fdaccept, buffer, strlen(buffer), 0)) {
+                                          
+                                            string rec(buffer);
+                                            /*string msg = ""; 
+                                            msg += std::string("LOGIN ");
+                                            msg += rec;
+                                            cout << "Message sent by server " << msg << " " << msg.length() << endl;
+                                            if(-1 == send(fdaccept, msg.c_str(), strlen(msg.c_str()), 0)) {
                                                 perror("Failed to sent record to client");
                                                 return;
                                             }
-                                            fflush(stdout);
+                                            fflush(stdout);*/
+                                            records += rec;
+                                            records += "$";
+                                            rec.clear();
+
                                         }
                                     }
+                                    string msg ="";
+                                    msg += std::string("LOGIN ");
+                                    msg += records;
+                                    
+                                    cout << "Message sent by the server " << msg << " " << msg.length() << endl;
+                                    if(-1 == send(fdaccept, msg.c_str(), msg.length(), 0)) {
+                                        perror("Failed to send loggedin client list");
+                                        return;
+                                    }
+
+
                                     fflush(stdout);
                                     /*
                                     memset(buffer, '\0', sizeof(buffer));
@@ -411,15 +434,20 @@ void run_server(string server_port) {
                                 fflush(stdout);
                             } else if(strcmp(tokens[0].c_str(), "SEND") == 0) {
                                 string dest_ip = tokens[1];
-                                string msg = tokens[2];
-                                cout << "Received send request at the server" << endl;
+                                string msg = "";
+                                msg += tokens[0];
+                                msg += " ";
+                                msg += ipstr;
+                                msg += " ";
+                                msg += tokens[2];
+                                cout << "Received send request at the server" << msg << endl;
                                 if(-1 == send(ip_fd_map[dest_ip], msg.c_str(), strlen(msg.c_str()),0 ))
                                 {
                                     perror("Failed to send the message to the destination");
                                     return;
                                 }
                                 cse4589_print_and_log("[%s:SUCCESS]\n", "RELAYED");
-                                cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n",ipstr.c_str(), dest_ip.c_str(), msg.c_str());
+                                cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n",ipstr.c_str(), dest_ip.c_str(), tokens[2].c_str());
                                 cse4589_print_and_log("[%s:END]\n", "RELAYED");
                                 fflush(stdout);
                             } else { }
@@ -660,7 +688,7 @@ void run_client(string port)
                         line.clear();
                     } else { /* Receive a response from server over connected socket*/
                         char buffer[1024];
-                        memset(buffer, '\0', sizeof(buffer));
+                        memset(&buffer, '\0', sizeof(buffer));
                         string str = "";
                         if((recv(sock_index, buffer, sizeof(buffer), 0)) <= 0) 
                         {
@@ -670,24 +698,47 @@ void run_client(string port)
                             /*Remove from watched list*/
                             FD_CLR(sock_index, &master_list);
                         } else {
-                            //str.clear();
-                            if(previous_cmd == "LOGIN") {
-                                str = std::string(buffer);
-                                cout << "Received from server.. for login " << endl << str << endl;
-                                if(-1 == presentInClientList(str))
-                                    _list.push_back(str);
+                            str.clear();
+                            str = std::string(buffer);
+                            std::size_t pos = str.find(" ");
+                            string cmd_response = str.substr(0, pos);
+                            string msg = str.substr(pos + 1);
+                            cout << "Length of message received from server " << msg.length() << endl; 
+                            if(cmd_response == std::string("LOGIN")) {
+                                //str = std::string(buffer);
+                                cout << "Received from server.. for login " << endl << msg << endl;
+                                stringstream s(msg);
+                                string rec = "";
+                                while(getline(s, rec, '$')) {
+                                    if(-1 == presentInClientList(rec))
+                                        _list.push_back(rec);
+                                }
+                                /*
+                                if(-1 == presentInClientList(msg))
+                                    _list.push_back(msg); */
                                 fflush(stdout);
-                            } else if(previous_cmd == "REFRESH") {
+                            } else if(previous_cmd == std::string("REFRESH")) {
                                 str = std::string(buffer);
                                 cout << "Received from server.. for refresh " << endl << str << endl;
                                 _list.push_back(str);
-                            } else { /* Receive message from the server sent by some client */
-                                str = std::string(buffer);
-                                cout << "Received from the server..for send " << endl << str << endl;
+                            } else if(cmd_response == std::string("SEND")){ /* Receive message from the server sent by some client */
+                                //str = std::string(buffer);
+                                
+                                cout << "Received from the server..for send " << endl << msg << endl;
+                                size_t pos = msg.find(" ");
+
+                                string ip = msg.substr(0, pos);
+                                string message = msg.substr(pos+1);
                                 cse4589_print_and_log("[%s:SUCCESS]\n", "RECEIVED");
-                                cse4589_print_and_log("msg from:%s\n[msg]:%s\n", "server", str.c_str());
+                                cse4589_print_and_log("msg from:%s\n[msg]:%s\n", ip.c_str(), message.c_str());
                                 cse4589_print_and_log("[%s:END]\n", "RECEIVED");
+                                ip.clear();
+                                message.clear();
                             }
+                            cmd_response.clear();
+                            msg.clear();
+                            fflush(stdout);
+
                         }
                     }
                 } /* end of if loop */
