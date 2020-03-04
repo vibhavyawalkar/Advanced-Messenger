@@ -145,7 +145,7 @@ using namespace std;
 
 char loggedString[2][20] = {"loggedout", "loggedin"};
 unordered_map<string, int> ip_fd_map;
-
+unordered_map<string, vector<string>> bufferedMessageList;
 
 int connect_to_server(string &server_ip, string &server_port);
 void run_server(unsigned int server_port);
@@ -578,8 +578,35 @@ void run_server(unsigned int server_port) {
                                 LOG_PRINT("[%s:END]\n", "RELAYED");
 
                                 fflush(stdout);
-                            } else { 
-                            
+                            } else if(strcmp(tokens[0].c_str(), "BROADCAST") == 0){
+                                string text_msg = tokens[1];
+                                string  msg ="";
+                                msg += tokens[0];
+                                msg += " ";
+                                msg += ipstr;
+                                msg += " ";
+                                msg += text_msg;
+
+                                cout << "Received broadcast request at the server" << msg << endl;
+                                int len = strlen(msg.c_str());
+
+                                for(int i = 0; i < loggedInClients.size(); i++)
+                                {
+                                    if(strcmp("loggedin", loggedString[loggedInClients[i].loggedIn()]) == 0) {
+                                        if(-1 == sendall(ip_fd_map[loggedInClients[i].getClientIp()], (char*)msg.c_str(), &len)) {
+                                            perror("Failed to send the message to the destination");
+                                            return;
+                                        }
+                                        cse4589_print_and_log("[%s:SUCCESS]\n", "RELAYED");
+                                        cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n",ipstr.c_str(), loggedInClients[i].getClientIp().c_str(), text_msg.c_str());
+                                        cse4589_print_and_log("[%s:END]\n", "RELAYED");
+                                        LOG_PRINT("[%s:SUCCESS]\n", "RELAYED");
+                                        LOG_PRINT("msg from:%s, to:%s\n[msg]:%s\n",ipstr.c_str(), loggedInClients[i].getClientIp().c_str(), text_msg.c_str());
+                                        LOG_PRINT("[%s:END]\n", "RELAYED");
+                                    } else { /* Buffer the message for loggedout clients */
+                                        bufferedMessageList[loggedInClients[i].getClientIp()].push_back(text_msg); 
+                                    }
+                                }
                             }
 			            }
                     }
@@ -839,7 +866,20 @@ void run_client(unsigned int port)
 
                         } else if(strcmp(tokens[0].c_str(), "BROADCAST") == 0) {
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
-                            cout << "Message " << tokens[1];
+                            LOG_PRINT("[%s:SUCCESS]\n", tokens[0].c_str());
+                            ostringstream s;
+                            s << tokens[0] << " " << tokens[1];
+
+                            cout << "Send message to client " << s.str() << endl;
+                            string buf(s.str());
+                            s.clear();
+                            int len = buf.length();
+                            if(sendall(connectedFd, (char*)buf.c_str(), &len) == -1) {
+                                perror("failed to send the messahe from the client");
+                                return;
+                            }
+                            buf.clear();
+                            fflush(stdout);
                         } else if(strcmp(tokens[0].c_str(), "BLOCK") == 0) {
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cout << "Client IP " << tokens[1];
@@ -908,7 +948,7 @@ void run_client(unsigned int port)
                                     _list.push_back(rec);
                                 }
                                fflush(stdout);
-                            } else if(cmd_response == std::string("SEND")){ /* Receive message from the server sent by some client */
+                            } else if(cmd_response == std::string("SEND") || cmd_response == std::string("BROADCAST")){ /* Receive message from the server sent by some client */
                                 //str = std::string(buffer);
                                 
                                 cout << "Received from the server..for send " << endl << msg << endl;
