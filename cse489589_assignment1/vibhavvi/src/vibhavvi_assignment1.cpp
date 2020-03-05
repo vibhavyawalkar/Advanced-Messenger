@@ -592,16 +592,16 @@ void run_server(unsigned int server_port) {
 
                                 for(int i = 0; i < loggedInClients.size(); i++)
                                 {
-                                    if(strcmp("loggedin", loggedString[loggedInClients[i].loggedIn()]) == 0) {
+                                    if(strcmp("loggedin", loggedString[loggedInClients[i].loggedIn()]) == 0 && loggedInClients[i].getClientIp() != ipstr) {
                                         if(-1 == sendall(ip_fd_map[loggedInClients[i].getClientIp()], (char*)msg.c_str(), &len)) {
                                             perror("Failed to send the message to the destination");
                                             return;
                                         }
                                         cse4589_print_and_log("[%s:SUCCESS]\n", "RELAYED");
-                                        cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n",ipstr.c_str(), loggedInClients[i].getClientIp().c_str(), text_msg.c_str());
+                                        cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n",ipstr.c_str(), "255.255.255.255", text_msg.c_str());
                                         cse4589_print_and_log("[%s:END]\n", "RELAYED");
                                         LOG_PRINT("[%s:SUCCESS]\n", "RELAYED");
-                                        LOG_PRINT("msg from:%s, to:%s\n[msg]:%s\n",ipstr.c_str(), loggedInClients[i].getClientIp().c_str(), text_msg.c_str());
+                                        LOG_PRINT("msg from:%s, to:%s\n[msg]:%s\n",ipstr.c_str(), "255.255.255.255", text_msg.c_str());
                                         LOG_PRINT("[%s:END]\n", "RELAYED");
                                     } else { /* Buffer the message for loggedout clients */
                                         bufferedMessageList[loggedInClients[i].getClientIp()].push_back(text_msg); 
