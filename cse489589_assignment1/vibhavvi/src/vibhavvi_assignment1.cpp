@@ -61,6 +61,8 @@ void log_print(char* filename, int line, char *fmt,...);
 #include "logger.h"
 FILE *fp ;
 static int SESSION_TRACKER; //Keeps track of session
+std::string logname = "/tmp/vib_";
+
 
 char* print_time()
 {
@@ -87,12 +89,13 @@ void log_print(char* filename, int line, char *fmt,...)
     char            *p, *r;
     int             e;
 
-    if(SESSION_TRACKER > 0)
-      fp = fopen ("/tmp/log.txt","a+");
-    else
-      fp = fopen ("/tmp/log.txt","w");
     
-    //fprintf(fp,"%s ",print_time());
+    if(SESSION_TRACKER > 0)
+      fp = fopen (logname.c_str(),"a+");
+    else {
+      fp = fopen (logname.c_str(),"w");
+    }
+    fprintf(fp,"%s ",print_time());
     fprintf(fp,"[%s][line: %d] ",filename,line);
     va_start( list, fmt );
 
@@ -150,8 +153,8 @@ unordered_map<string, vector<string>> blockedList;
 
 int connect_to_server(string &server_ip, string &server_port);
 void run_server(unsigned int server_port);
-void run_client(unsigned int port);
-void print_ip(string cmd);
+int run_client(unsigned int port);
+string print_ip(string cmd);
 void print_server_statistics();
 void print_loggedIn_Client_List();
 void insertClientPort(string ip, string port);
@@ -163,8 +166,12 @@ int sendall(int s, char *buf, int *len);
 bool isBlocked(string clientIP, string IP);
 void printBlockedClientDetails(string clientIp); /* Pass the IP of the client who's blocked list is to be displayed */
 void unblock(string clientIP, string ipToUnblock);
+void msgStatistics(string ip, int type);
+bool isLoggedIn(string clientIp);
 int recvall(int s, char *buf, int len);
-
+bool isValidIp(string ip);
+bool isPortValid(string port);
+bool isIPExistent(string ip);
 /* clientDetails contains the details about the clients to be maintained at
    the server */
 class clientDetails
@@ -225,6 +232,14 @@ class clientDetails
     int loggedIn() {
         return loggedInFlag;
     }
+
+    void msgSent() {
+        num_msg_sent++;
+    }
+
+    void msgRecv() {
+        num_msg_recv++;
+    }
 };
 
 vector<clientDetails> loggedInClients; // for server
@@ -248,13 +263,12 @@ int main(int argc, char **argv)
 	/* Clear LOGFILE*/
     fclose(fopen(LOGFILE, "w"));
 
-
-    myfile.open("/tmp/grader_log.txt");
-	/*Start Here*/
+    logname += std::to_string(getpid());
+    /*Start Here*/
     if(argc == 3 && strcmp(argv[1], "s") == 0) { // Run as server
         run_server((unsigned int)stol(argv[2]));
     } else if(argc == 3 && strcmp(argv[1], "c") == 0) { // Run as client
-        run_client((unsigned int)stol(argv[2]));
+         return run_client((unsigned int)stol(argv[2]));
     } else {
         cse4589_print_and_log("[ERROR]\n");
         
@@ -393,10 +407,13 @@ void run_server(unsigned int server_port) {
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             print_server_statistics();
                         } else if(strcmp(tokens[0].c_str(), "BLOCKED") == 0) {
+                            if(!isValidIp(tokens[1]) || !isIPExistent(tokens[1]))
+                                goto err_labelsrv;
+                                
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             printBlockedClientDetails(tokens[1]);
                         } else {
-                            LOG_PRINT("[%s:ERROR]\n", tokens[0].c_str());
+err_labelsrv:               LOG_PRINT("[%s:ERROR]\n", tokens[0].c_str());
                             cse4589_print_and_log("[%s:ERROR]\n", tokens[0].c_str());
                         }
                         cse4589_print_and_log("[%s:END]\n", tokens[0].c_str());
@@ -492,11 +509,13 @@ void run_server(unsigned int server_port) {
                             {   
                                 char recordBuffer[80];
                                 memset(recordBuffer, '\0', sizeof(recordBuffer));
+                                char messageBuffer[300];
+                                memset(messageBuffer, '\0', sizeof(messageBuffer));
 
                                 insertClientPort(ipstr, tokens[1]);;
                                 LOG_PRINT("Starting to sort loggedinCLients\n");
                                 sort(loggedInClients.begin(), loggedInClients.end(), compare_port);
-                                LOG_PRINT("DOne with sorting loggedinClients\n");
+                                LOG_PRINT("Done with sorting loggedinClients\n");
                                 string records = ""; /* List of all loggedin clients*/
                                 for(int i = 0; i < loggedInClients.size(); i++)
                                 {
@@ -509,10 +528,28 @@ void run_server(unsigned int server_port) {
                                         memset(recordBuffer, '\0', sizeof(recordBuffer));
                                     }
                                 }
+
                                 string msg = std::string("LOGIN ");
                                 msg += records;
+/*
+                                records = "";
+
+                                if(!bufferedMessageList[ipstr].empty()) {
+                                    records += "#";
+                                    for(auto itr = bufferedMessageList[ipstr].begin(); itr != bufferedMessageList[ipstr].end(); itr++) {
+                                        sprintf(messageBuffer, "%s", (*itr).c_str());
+
+                                        string rec(messageBuffer);
+                                        records += rec;
+                                        records += "#";
+                                        rec.clear();
+                                        memset(messageBuffer, '\0', sizeof(messageBuffer));
+                                    }
+                                }
+
+                                msg += records;
                                  
-                                cout << "Message sent by the server to client " << msg << " length: " << msg.length() << endl;
+  */                              cout << "Message sent by the server to client " << msg << " length: " << msg.length() << endl;
                                 LOG_PRINT("Message sent by the server to client %s length: %d\n", msg.c_str(), msg.length());
                                 int len = msg.length();
                                 if(-1 == sendall(sock_index, (char*)msg.c_str(), &len)) {
@@ -520,7 +557,11 @@ void run_server(unsigned int server_port) {
                                     return;
                                 }
                                 fflush(stdout);
-
+/*
+                                bufferedMessageList[ipstr].clear();
+                                cout << "Empty buffer for client, buffer size: " << bufferedMessageList[ipstr].size() << endl;
+                                LOG_PRINT("Empty buffer for client, buffer size: %d", bufferedMessageList[ipstr].size());
+*/
                             } else if(strcmp(tokens[0].c_str(), "LOGOUT") == 0) {
                                 logoutClient(ipstr);
                             } else if(strcmp(tokens[0].c_str(), "REFRESH") == 0) {
@@ -570,18 +611,30 @@ void run_server(unsigned int server_port) {
                                 cout << "Received send request at the server" << msg << endl;
                                 LOG_PRINT("Received send request at the server %s", msg.c_str());
                                 if(!isBlocked(dest_ip, ipstr)) { /* Check if destination IP has blocked the sender */
-                                    int len = strlen(msg.c_str());
-                                    if(-1 == sendall(ip_fd_map[dest_ip], (char*)msg.c_str(), &len))
-                                    {
-                                        perror("Failed to send the message to the destination");
-                                        return;
+                                    if(isLoggedIn(dest_ip) == true) {
+                                        LOG_PRINT("destination client is logged in IP %s", dest_ip.c_str());
+                                        int len = strlen(msg.c_str());
+                                        if(-1 == sendall(ip_fd_map[dest_ip], (char*)msg.c_str(), &len))
+                                        {
+                                            perror("Failed to send the message to the destination");
+                                            return;
+                                        }
+                                        cse4589_print_and_log("[%s:SUCCESS]\n", "RELAYED");
+                                        cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n",ipstr.c_str(), dest_ip.c_str(), text_msg.c_str());
+                                        cse4589_print_and_log("[%s:END]\n", "RELAYED");
+                                        LOG_PRINT("[%s:SUCCESS]\n", "RELAYED");
+                                        LOG_PRINT("msg from:%s, to:%s\n[msg]:%s\n",ipstr.c_str(), dest_ip.c_str(), text_msg.c_str());
+                                        LOG_PRINT("[%s:END]\n", "RELAYED");
+
+                                    } else { /* buffer message for client who is logged out */
+                                        LOG_PRINT("Destination Client %s is logged out, buffer messages", dest_ip.c_str());
+                                        cout << "Destination Client " << dest_ip << " is logged out, buffer messages" << endl;
+                                        string bufferedMsg = ipstr;
+                                        bufferedMsg += " ";
+                                        bufferedMsg += text_msg;
+                                        bufferedMessageList[dest_ip].push_back(bufferedMsg);
                                     }
-                                    cse4589_print_and_log("[%s:SUCCESS]\n", "RELAYED");
-                                    cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n",ipstr.c_str(), dest_ip.c_str(), text_msg.c_str());
-                                    cse4589_print_and_log("[%s:END]\n", "RELAYED");
-                                    LOG_PRINT("[%s:SUCCESS]\n", "RELAYED");
-                                    LOG_PRINT("msg from:%s, to:%s\n[msg]:%s\n",ipstr.c_str(), dest_ip.c_str(), text_msg.c_str());
-                                    LOG_PRINT("[%s:END]\n", "RELAYED");
+                                    msgStatistics(ipstr, 1);
                                 }
                                 fflush(stdout);
                             } else if(strcmp(tokens[0].c_str(), "BROADCAST") == 0){
@@ -611,8 +664,12 @@ void run_server(unsigned int server_port) {
                                             LOG_PRINT("msg from:%s, to:%s\n[msg]:%s\n",ipstr.c_str(), "255.255.255.255", text_msg.c_str());
                                             LOG_PRINT("[%s:END]\n", "RELAYED");
                                         } else { /* Buffer the message for loggedout clients */
-                                            bufferedMessageList[loggedInClients[i].getClientIp()].push_back(text_msg); 
+                                            string bufferedMsg = ipstr;
+                                            bufferedMsg += " ";
+                                            bufferedMsg += text_msg;
+                                            bufferedMessageList[loggedInClients[i].getClientIp()].push_back(bufferedMsg); 
                                         }
+                                        msgStatistics(ipstr, 1);
                                     }
                                 }
                             } else if(strcmp(tokens[0].c_str(), "BLOCK") == 0) {
@@ -632,6 +689,28 @@ void run_server(unsigned int server_port) {
     }
     myfile.close();
 } /*end of run_server func */
+
+void msgStatistics(string ip, int type) /* type 1 = send, type 2 = recv */
+{
+    for(int i = 0; i < loggedInClients.size(); i++) {
+        if(loggedInClients[i].getClientIp() == ip)
+        {
+            if(type == 1)
+                loggedInClients[i].msgSent();
+            else
+                loggedInClients[i].msgRecv();
+        }
+    }
+}
+
+bool isLoggedIn(string ipstr) {
+    for(int i = 0; i < loggedInClients.size(); i++) {
+        if(loggedInClients[i].getClientIp() == ipstr && loggedInClients[i].loggedIn() == 1)
+            return true;
+    }
+    return false;
+}
+
 
 void unblock(string clientIP, string ipToUnblock)
 {
@@ -791,7 +870,7 @@ void printBlockedClientDetails(string clientIp)
     }
 }
 
-void run_client(unsigned int port)
+int run_client(unsigned int port)
 {
     int connectedFd = -1;
     fd_set master_list, watch_list;
@@ -819,6 +898,7 @@ void run_client(unsigned int port)
         cout << "Select returned" << endl;
         LOG_PRINT("Select returned\n");
 
+        string client_ip = "";
         /* Check if we have sockets/STDIN to process */
         if(selret > 0) {
             /*Looping through socket descriptors to check which ones are ready*/
@@ -846,7 +926,7 @@ void run_client(unsigned int port)
                         } else if(strcmp(tokens[0].c_str(), "IP") == 0) {
                             LOG_PRINT("[%s:SUCCESS]\n", tokens[0].c_str());
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
-                            print_ip(tokens[0]);
+                            client_ip = print_ip(tokens[0]);
                         } else if(strcmp(tokens[0].c_str(), "PORT") == 0) {
                             LOG_PRINT("[%s:SUCCESS]\n", tokens[0].c_str());
                             LOG_PRINT("PORT:%d\n", port);
@@ -864,10 +944,14 @@ void run_client(unsigned int port)
 
                         } /* Client only commands start here */
                           else if(strcmp(tokens[0].c_str(), "LOGIN") == 0) {
+                            if(!isValidIp(tokens[1]) || !isPortValid(tokens[2]))
+                                goto err_label;
+
                             LOG_PRINT("[%s:SUCCESS]\n", tokens[0].c_str());
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cout << "Connect to Server " << tokens[1] << ":" << tokens[2];
                             LOG_PRINT("Connect to Server %s : %s", tokens[1].c_str(), tokens[2].c_str());
+
                             connectedFd = connect_to_server(tokens[1], tokens[2]);
                             cout << "connect returned" << endl;
                             if(connectedFd < 0)
@@ -882,7 +966,7 @@ void run_client(unsigned int port)
                             int len = buf.length();
                             if(sendall(connectedFd, (char*)buf.c_str(), &len) == -1) {
                                 perror("failed to send the port number to the server");
-                                return;
+                                return -1;
                             }
                             buf.clear();
                             fflush(stdout);
@@ -894,7 +978,7 @@ void run_client(unsigned int port)
                             int len = buf.length();
                             if(sendall(connectedFd, (char*)buf.c_str(), &len) == -1) {
                                 perror("failed to send the LOGOUT string to the server");
-                                return;
+                                return -1;
                             }
                             _list.clear();
                             cout << "list size after truncate " << _list.size() << endl;
@@ -902,8 +986,6 @@ void run_client(unsigned int port)
                             fflush(stdout);
 
                         } else if(strcmp(tokens[0].c_str(), "SEND") == 0) {
-                            LOG_PRINT("[%s:SUCCESS]\n", tokens[0].c_str());
-                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             if(getline(line, str, ' '))
                                 tokens.push_back(str);
                             string _l = line.str();    // SEND <dest ip> <msg>
@@ -914,14 +996,17 @@ void run_client(unsigned int port)
                            
                             ostringstream s;
                             s << tokens[0] << " " << tokens[1] << " " << msg;
-
+                            if(!isValidIp(tokens[1]) || !isLoggedIn(tokens[1]))
+                                goto err_label;
+                            LOG_PRINT("[%s:SUCCESS]\n", tokens[0].c_str());
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cout << "Send message to client " << s.str() << endl;
                             string buf(s.str());
                             s.clear();
                             int len = buf.length();
                             if(sendall(connectedFd, (char*)buf.c_str(), &len) == -1) {
                                 perror("failed to send the message from the client");
-                                return;
+                                return -1;
                             }
                             buf.clear();
                             fflush(stdout);
@@ -938,36 +1023,46 @@ void run_client(unsigned int port)
                             int len = buf.length();
                             if(sendall(connectedFd, (char*)buf.c_str(), &len) == -1) {
                                 perror("failed to send the messahe from the client");
-                                return;
+                                return -1;
                             }
                             buf.clear();
                             fflush(stdout);
                         } else if(strcmp(tokens[0].c_str(), "BLOCK") == 0) {
-                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             ostringstream s;
                             s << tokens[0] << " " << tokens[1];
+
+                            if(!isValidIp(tokens[1]) || !isLoggedIn(tokens[1]))
+                                goto err_label;
+
+                            if(isBlocked(client_ip, tokens[1]))
+                                goto err_label;
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cout << "Block Client IP " << tokens[1];
                             string buf(s.str());
                             s.clear();
                             int len = buf.length();
                             if(sendall(connectedFd, (char*)buf.c_str(), &len) == -1) {
                                 perror("failed to send the message from the client");
-                                return;
+                                return -1;
                             }
                             buf.clear();
                             fflush(stdout);
 
                         } else if(strcmp(tokens[0].c_str(), "UNBLOCK") == 0) {
-                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+                            if(!isValidIp(tokens[1]) || !isLoggedIn(tokens[1]))
+                                goto err_label;
+                            if(!isBlocked(client_ip, tokens[1]))
+                                goto err_label;
                             ostringstream s;
                             s << tokens[0] << " " << tokens[1];
+                            cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
                             cout << "Unblock CLient IP " << tokens[1];
                             string buf(s.str());
                             s.clear();
                             int len = buf.length();
                             if(sendall(connectedFd, (char*)buf.c_str(), &len) == -1) {
                                 perror("failed to send the message from the client");
-                                return;
+                                return -1;
                             }
                             buf.clear();
                             fflush(stdout);
@@ -980,14 +1075,21 @@ void run_client(unsigned int port)
                             int len = buf.size();
                             if(sendall(connectedFd, (char*)buf.c_str(), &len) == -1) {
                                 perror("failed to send the LOGOUT string to the server");
-                                return;
+                                return -1;
                             }
                             buf.clear();
                             fflush(stdout);
                         } else if(strcmp(tokens[0].c_str(), "EXIT") == 0) {
+                            logoutClient(client_ip);
+                            ip_fd_map.erase(client_ip);
+                            bufferedMessageList[client_ip].clear();
+                            blockedList[client_ip].clear();
+
                             cse4589_print_and_log("[%s:SUCCESS]\n", tokens[0].c_str());
+                            LOG_PRINT("[%s:END]\n", tokens[0].c_str());
+                            return 0;
                         } else {
-                            cse4589_print_and_log("[%s:ERROR]\n", tokens[0].c_str());
+err_label:                  cse4589_print_and_log("[%s:ERROR]\n", tokens[0].c_str());
                         }
                         LOG_PRINT("[%s:END]\n", tokens[0].c_str());
                         cse4589_print_and_log("[%s:END]\n", tokens[0].c_str());
@@ -1013,17 +1115,49 @@ void run_client(unsigned int port)
                             string msg = str.substr(pos + 1);
                             cout << "Length of message received from server " << msg.length() << endl; 
                             if(cmd_response == std::string("LOGIN")) {
-                                //str = std::string(buffer);
                                 cout << "Received from server.. for login " << endl << msg << endl;
-                                stringstream s(msg);
+                                string f = msg;
+                                size_t pos = f.find('#');
+                                string strr = "";
+                                if(pos != string::npos)
+                                    strr = f.substr(0, pos-1);
+                                else
+                                    strr = f;
+                                stringstream s(strr);
                                 string rec = "";
                                 while(getline(s, rec, '$')) {
                                     if(-1 == presentInClientList(rec))
                                         _list.push_back(rec);
                                 }
-                                /*
-                                if(-1 == presentInClientList(msg))
-                                    _list.push_back(msg); */
+
+                                /* Extracting the buffered messages from the stream */
+  /*                              
+                                if(pos != string::npos) {
+                                    string st(f.substr(pos+1));
+                                    stringstream bufferedMsg(st.substr(pos+1));
+
+                                    string bufMsg = "";
+                                    while(getline(bufferedMsg, bufMsg, '#')) {
+                                        cout << "Buffered msg from the server.... after login " << endl << bufMsg << endl;
+                                    
+                                        size_t pos = bufMsg.find(" "); // msg is <client ip> <msg>
+
+                                        string ip = bufMsg.substr(0, pos);
+                                        string message = bufMsg.substr(pos+1);
+
+                                        LOG_PRINT("[%s:SUCCESS]\n", "RECEIVED");
+                                        LOG_PRINT("msg from:%s\n[msg]:%s\n", ip.c_str(), message.c_str());
+                                        LOG_PRINT("[%s:END]\n", "RECEIVED");
+
+                                        cse4589_print_and_log("[%s:SUCCESS]\n", "RECEIVED");
+                                        cse4589_print_and_log("msg from:%s\n[msg]:%s\n", ip.c_str(), message.c_str());
+                                        cse4589_print_and_log("[%s:END]\n", "RECEIVED");
+                                        msgStatistics(client_ip, 2);
+                                        ip.clear();
+                                        message.clear();
+                                    }
+                                }
+     */
                                 fflush(stdout);
                             } else if(cmd_response == std::string("REFRESH")) {
                                 //str = std::string(buffer);
@@ -1052,6 +1186,7 @@ void run_client(unsigned int port)
                                 cse4589_print_and_log("[%s:SUCCESS]\n", "RECEIVED");
                                 cse4589_print_and_log("msg from:%s\n[msg]:%s\n", ip.c_str(), message.c_str());
                                 cse4589_print_and_log("[%s:END]\n", "RECEIVED");
+                                msgStatistics(client_ip, 0); 
                                 ip.clear();
                                 message.clear();
                             } else { }
@@ -1067,7 +1202,7 @@ void run_client(unsigned int port)
     } /* End of infinite while loop */
 } /* end of run client function */
 
-void print_ip(string cmd)
+string print_ip(string cmd)
 {
     int socketfd;
     struct sockaddr_in server, addr;
@@ -1077,7 +1212,7 @@ void print_ip(string cmd)
     socketfd = socket(AF_INET, SOCK_DGRAM, 0);
     if(socketfd == -1) {
         perror("Couldn't create socket");
-        return;
+        return NULL;
     }
 
     server.sin_addr.s_addr = inet_addr("8.8.8.8");
@@ -1087,13 +1222,13 @@ void print_ip(string cmd)
     if(-1 == connect(socketfd, (struct sockaddr*)&server, sizeof(server)) < 0) {
         close(socketfd);
         perror("Connect error");
-        return;
+        return NULL;
     }
 
     socklen_t addr_len = sizeof(addr);
     if(-1 == getsockname(socketfd, (struct sockaddr*)&addr, &addr_len)) {
         perror("getsockname failed");
-        return;
+        return NULL;
     }
 
     char ip[INET_ADDRSTRLEN] = {'\0'};
@@ -1101,4 +1236,57 @@ void print_ip(string cmd)
     inet_ntop(AF_INET, &addr.sin_addr, ip, INET_ADDRSTRLEN);
     LOG_PRINT("IP:%s\n", ip);
     cse4589_print_and_log("IP:%s\n", ip);
+    string _ip(ip);
+    return _ip;
+}
+
+bool isPortValid(string port) {
+    for(int i = 0; i < port.length(); i++)
+    {
+        if(!isdigit(port[i])) return false;
+    }
+    unsigned int p = (unsigned int)(stol(port));
+    if(p < 0 && p > 65536)
+        return false;
+    return true;
+}
+
+bool isValidIp(string ip) {
+    if(ip.length() != 13) return false;
+
+    int dots = 0;
+    for(int i = 0; i < ip.length(); i++)
+    {
+        if(ip[i] == '.')
+            dots++;
+    }
+
+    if(dots != 3)
+        return false;
+
+    for(int i = 0; i < ip.length(); i++)
+    {
+        if(!isdigit(ip[i]) && ip[i] != '.')
+            return false;
+    }
+    return true;
+}
+
+bool isIPExistent(string ip)
+{
+    vector<string> ipList;
+    string ipStr = to_string(128) + "." + to_string(205) + "." + to_string(36) + ".";
+    ipList.push_back(ipStr + to_string(35));
+    ipList.push_back(ipStr + to_string(33));
+    ipList.push_back(ipStr + to_string(34));
+    ipList.push_back(ipStr + to_string(46));
+    ipList.push_back(ipStr + to_string(36));
+    
+    for(int i = 0; i < ipList.size(); i++)
+    {
+        if(ip == ipList[i]) {
+            return true;
+        }
+    }
+    return false;
 }
